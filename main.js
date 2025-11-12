@@ -142,8 +142,8 @@ const tutorialSteps = [
     {
         element: '#find-path-btn',
         title: '4. Find Route!',
-        text: 'Watch how to calculate the final route.', // New text
-        demo: 'click-find-path', // New property
+        text: 'Great! Now, click the "Find Optimal Route" button to see the magic.', // MODIFIED: Updated text
+        // REMOVED: demo: 'click-find-path',
         waitFor: { type: 'click', element: '#find-path-btn' }
     },
     {
@@ -343,6 +343,14 @@ function onGridMouseDown(event) {
     } 
     else {
         handlePathfindingClick(r, c);
+        
+        // --- This check is now handled in the 'isTutorialActive' block above ---
+        /* if (isTutorialActive && currentTutorialWait) {
+            if (currentTutorialWait.type === 'custom' && currentTutorialWait.event === 'set_start' && startCoords) {
+                nextTutorialStep();
+            } 
+        }
+        */
     }
 }
 
@@ -944,7 +952,18 @@ async function showTutorialStep(index) {
                     tutorialClickListener = { element: targetElement, handler: handler };
                 }
             } else if (step.waitFor.type === 'custom') {
-                tutorialText.textContent = `Now you try it on the grid. We'll wait...`;
+                // --- MODIFIED: More descriptive text ---
+                if (step.waitFor.event === 'build') {
+                    tutorialText.textContent = `Now you try it! Click or drag on any empty (dark grey) squares to build obstacles.`;
+                } else if (step.waitFor.event === 'erase') {
+                    tutorialText.textContent = `Now you try it! Click or drag on any building (white) squares to erase them.`;
+                } else if (step.waitFor.event === 'set_start') {
+                    tutorialText.textContent = `Now you try it! Click any empty (dark grey) square to place your Start point.`;
+                } else {
+                    tutorialText.textContent = `Now you try it on the grid. We'll wait...`;
+                }
+                // --- END MODIFIED ---
+                
                 currentTutorialWait = step.waitFor; // Now we wait for the user
                 editorContainer.classList.remove('disabled'); // Enable grid for user
             }
@@ -997,33 +1016,6 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// *** NEW HELPER ***
-/**
- * Finds the first available empty cell (path) for demos.
- * Starts from the middle and spirals outwards.
- * @returns {object} {r, c} or null if no cell is found.
- */
-function findEmptyCell() {
-    const rMid = Math.floor(GRID_ROWS / 2);
-    const cMid = Math.floor(GRID_COLS / 2);
-
-    if (gridData[rMid][cMid] === 0) return { r: rMid, c: cMid };
-
-    for (let radius = 1; radius < Math.max(rMid, cMid); radius++) {
-        for (let r = rMid - radius; r <= rMid + radius; r++) {
-            for (let c = cMid - radius; c <= cMid + radius; c++) {
-                // Only check the "border" of this radius
-                if (Math.abs(r - rMid) === radius || Math.abs(c - cMid) === radius) {
-                    if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS && gridData[r][c] === 0) {
-                        return { r, c };
-                    }
-                }
-            }
-        }
-    }
-    return null; // Should be rare
-}
-
 // Helper: Move cursor to an element
 async function moveCursorTo(element) {
     if (!element) return;
@@ -1071,14 +1063,9 @@ async function demoDrag(r1, c1, r2, c2, val) {
         r = Math.max(0, Math.min(GRID_ROWS - 1, r));
         c = Math.max(0, Math.min(GRID_COLS - 1, c));
         
-        // Failsafe: if target is blocked, don't draw over it
-        if (gridData[r][c] !== 0 && val === 1) { 
-             // skip
-        } else {
-            await moveCursorToCell(r, c);
-            applyDrawing(r,c); // Apply drawing during drag
-            await sleep(100); // Drag speed
-        }
+        await moveCursorToCell(r, c);
+        applyDrawing(r,c); // Apply drawing during drag
+        await sleep(100); // Drag speed
     }
     
     demoCursor.classList.remove('mousedown');
@@ -1096,106 +1083,48 @@ async function runTutorialDemo(demoType) {
     demoCursor.style.transform = `translate(${window.innerWidth / 2}px, ${window.innerHeight / 2}px)`;
     await sleep(500);
 
-    // --- MODIFICATION: Find safe, empty cells for the demo ---
-    let safeCoords = [];
-    for (let r = 0; r < GRID_ROWS; r++) {
-        for (let c = 0; c < GRID_COLS; c++) {
-            if (gridData[r][c] === 0) {
-                safeCoords.push({ r, c });
-                if (safeCoords.length >= 5) break; // Need 5 for our demos
-            }
-        }
-        if (safeCoords.length >= 5) break;
-    }
-
-    // Failsafe if grid is full (very unlikely)
-    if (safeCoords.length < 5) {
-        console.warn("Not enough empty space to run full demo.");
-        // Fallback to center (original buggy behavior)
-        const midR = Math.floor(GRID_ROWS / 2);
-        const midC = Math.floor(GRID_COLS / 2);
-        safeCoords = [
-            { r: midR - 2, c: midC - 2 }, { r: midR - 2, c: midC + 2 },
-            { r: midR, c: midC }, { r: midR - 3, c: midC }, { r: midR + 3, c: midC }
-        ];
-    }
-    // --- END MODIFICATION ---
+    // Find good example cells (not on edge)
+    const midR = Math.floor(GRID_ROWS / 2);
+    const midC = Math.floor(GRID_COLS / 2);
 
     switch (demoType) {
         case 'build':
             setMode('BUILD'); // Ensure correct mode
-            // Use safe coords
-            await demoDrag(safeCoords[0].r, safeCoords[0].c, safeCoords[1].r, safeCoords[1].c, 1); // 1 = build
+            await demoDrag(midR - 2, midC - 2, midR - 2, midC + 2, 1); // 1 = build
             break;
         
         case 'erase':
             setMode('BUILD'); // Ensure correct mode
-            // Use same safe coords to erase
-            await demoDrag(safeCoords[0].r, safeCoords[0].c, safeCoords[1].r, safeCoords[1].c, 0); // 0 = erase
+            await demoDrag(midR - 2, midC - 2, midR - 2, midC + 2, 0); // 0 = erase
             break;
         
         case 'click-set-start':
-            // This demo is removed, but we keep the case just in case
             await demoClick(document.getElementById('btn-start'));
+            // setMode('SET_START'); // Don't set mode, wait for user
             break;
 
         case 'place-start':
             setMode('SET_START'); // Ensure correct mode
-            // Use 3rd safe coord
-            await demoClick(editorCells[safeCoords[2].r][safeCoords[2].c]);
-            handlePathfindingClick(safeCoords[2].r, safeCoords[2].c); // Simulate click
+            await demoClick(editorCells[midR][midC]);
+            handlePathfindingClick(midR, midC); // Simulate click
             break;
 
         case 'click-set-stop':
-            // This demo is removed
             await demoClick(document.getElementById('btn-stop'));
+            // setMode('SET_STOP'); // Don't set mode, wait for user
             break;
 
         case 'place-stops':
             setMode('SET_STOP'); // Ensure correct mode
-            // Use 4th and 5th safe coords
-            await demoClick(editorCells[safeCoords[3].r][safeCoords[3].c]);
-            handlePathfindingClick(safeCoords[3].r, safeCoords[3].c); // Simulate click
-            await demoClick(editorCells[safeCoords[4].r][safeCoords[4].c]);
-            handlePathfindingClick(safeCoords[4].r, safeCoords[4].c); // Simulate click
+            await demoClick(editorCells[midR - 3][midC]);
+            handlePathfindingClick(midR - 3, midC); // Simulate click
+            await demoClick(editorCells[midR + 3][midC]);
+            handlePathfindingClick(midR + 3, midC); // Simulate click
             break;
 
         case 'click-find-path':
             await demoClick(document.getElementById('find-path-btn'));
             // Don't actually run the pathfind, just demo the click
-            break;
-            
-        case 'orbit-map': // NEW DEMO CASE
-            {
-                const canvasRect = canvas.getBoundingClientRect();
-                const startX = canvasRect.left + canvasRect.width / 2;
-                const startY = canvasRect.top + canvasRect.height / 2;
-                const dragOffset = 80;
-
-                // Move to center
-                demoCursor.style.transform = `translate(${startX - 10}px, ${startY - 3}px)`;
-                await sleep(500);
-                
-                // --- Simulate drag left ---
-                demoCursor.classList.add('mousedown');
-                await sleep(100);
-                demoCursor.style.transform = `translate(${startX - dragOffset - 10}px, ${startY - 3}px)`;
-                await sleep(500); // Hold drag
-                demoCursor.classList.remove('mousedown');
-                await sleep(300);
-
-                // --- Simulate drag right ---
-                demoCursor.classList.add('mousedown');
-                await sleep(100);
-                demoCursor.style.transform = `translate(${startX + dragOffset - 10}px, ${startY - 3}px)`;
-                await sleep(500); // Hold drag
-                demoCursor.classList.remove('mousedown');
-                await sleep(300);
-
-                // Reset to center
-                demoCursor.style.transform = `translate(${startX - 10}px, ${startY - 3}px)`;
-                await sleep(300);
-            }
             break;
     }
 
