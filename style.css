@@ -1,0 +1,505 @@
+/* ... existing styles ... */
+
+.mode-btn:disabled, #find-path-btn:disabled {
+    background-color: #555;
+    color: #999;
+    cursor: not-allowed;
+}
+
+#grid-editor-container.disabled {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+/* ... all other styles ... */
+body {
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #222222; /* Dark background */
+    color: #f0f0f0; /* Light text */
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Header */
+header {
+    background-color: #1a1a1a; /* Darker header */
+    padding: 1rem 2rem;
+    border-bottom: 1px solid #444; /* Dark border */
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 10;
+    /* NEW: Flex for help button */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    /* REMOVED: margin-left: auto; */
+    flex: 2; /* Give title more space */
+    text-align: center; /* Center the title */
+}
+
+/* NEW: Help Button */
+#help-btn {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+#help-btn:hover {
+    background-color: #0056b3;
+}
+
+/* REMOVED: Spacer for centering title */
+/*
+.header-spacer {
+    width: 78px; 
+}
+*/
+
+/* NEW: Add rules for flex layout */
+.header-left, .header-right {
+    flex: 1;
+}
+
+.header-left {
+    text-align: left;
+}
+.header-right {
+    text-align: right;
+}
+
+
+/* Main content area */
+.main-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden; /* Prevent scrolling on main container */
+}
+
+/* Left Panel: 2D Grid Editor */
+.editor-panel {
+    width: 400px; /* Fixed width for the editor */
+    padding: 1.5rem;
+    background-color: #2a2a2a; /* Dark panel background */
+    border-right: 1px solid #444; /* Dark border */
+    overflow-y: auto; /* Allow scrolling if content is tall */
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-panel h2 {
+    margin-top: 0;
+    font-size: 1.25rem;
+    border-bottom: 2px solid #f0f0f0; /* Light border */
+    padding-bottom: 0.5rem;
+    color: #f0f0f0; /* Light text */
+}
+
+.editor-panel p {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 1.5rem;
+}
+
+#grid-editor-container {
+    display: grid;
+    border: 1px solid #555; /* Darker border */
+    margin-top: 1rem;
+    /* Grid columns will be set by JS */
+    user-select: none; /* Prevent text selection while dragging */
+}
+
+.grid-cell {
+    width: 100%;
+    padding-bottom: 100%; /* Aspect ratio 1:1 */
+    position: relative;
+    cursor: pointer;
+    border: 1px solid #444; /* Dark border */
+    box-sizing: border-box; /* Include border in size */
+}
+
+.grid-cell::after {
+    content: '';
+    position: absolute;
+    top: 10%;
+    left: 10%;
+    width: 80%;
+    height: 80%;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+/* 0 = Path */
+.grid-cell[data-type="0"]::after {
+    background-color: #444444; /* Dark grey path */
+    border: 1px solid #555;
+}
+
+/* 1 = Obstacle / Building */
+.grid-cell[data-type="1"]::after {
+    background-color: #cccccc; /* Light grey building */
+    border: 1px solid #dddddd;
+    transform: scale(1.1);
+}
+
+/* Pathfinding UI styles */
+.grid-cell[data-type="start"]::after {
+    background-color: #4CAF50; /* Green */
+    border: 1px solid #81C784;
+    transform: scale(1.1);
+    box-shadow: 0 0 10px #4CAF50;
+}
+/* MODIFIED: Changed from "end" to "stop" */
+.grid-cell[data-type="stop"]::after {
+    background-color: #F44336; /* Red */
+    border: 1px solid #E57373;
+    transform: scale(1.1);
+    box-shadow: 0 0 10px #F44336;
+    
+    /* REMOVED: Number-related styles from here */
+}
+
+.grid-cell:hover::after {
+    transform: scale(1.2);
+    box-shadow: 0 0 10px rgba(100,150,255,0.5); /* Lighter blue glow */
+}
+
+.legend {
+    margin-top: auto; /* Pushes legend to the bottom */
+    padding-top: 1.5rem;
+    border-top: 1px solid #444; /* Dark border */
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.legend-color {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    margin-right: 0.5rem;
+    border: 1px solid #555; /* Darker border */
+}
+
+/* Pathfinding Controls */
+#pathfinding-controls {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #444;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+#pathfinding-controls h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: #f0f0f0;
+}
+
+.mode-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.mode-btn, #find-path-btn {
+    padding: 0.75rem;
+    background-color: #444;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s;
+    border: 2px solid #444;
+}
+
+.mode-btn:hover {
+    background-color: #555;
+}
+
+.mode-btn.active {
+    background-color: #007bff; /* Blue */
+    border-color: #0056b3;
+    box-shadow: 0 0 10px rgba(0,123,255,0.5);
+}
+
+#find-path-btn {
+    background-color: #4CAF50; /* Green */
+    font-size: 1rem;
+}
+
+#find-path-btn:hover {
+    background-color: #45a049;
+}
+
+/* NEW: Disabled state for buttons */
+.mode-btn:disabled, #find-path-btn:disabled {
+    background-color: #555;
+    color: #999;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+#message-box {
+    font-size: 0.9rem;
+    color: #ffc107; /* Amber */
+    text-align: center;
+    min-height: 1.5em;
+    margin-top: 0.5rem;
+}
+
+/* Right Panel: 3D Canvas */
+.canvas-container {
+    flex: 1; /* Takes up remaining space */
+    position: relative;
+    background-color: #222222; /* Match body background */
+}
+
+#three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* NEW: Container for 3D labels */
+#label-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Lets clicks pass through to the canvas */
+}
+
+/* NEW: Style for 3D labels */
+.stop-label {
+    color: white;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: bold;
+    transform: translate(10px, -10px); /* Offset from the marker center */
+}
+
+/* NEW: Startup Modal Styles */
+#startup-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background-color: #2a2a2a;
+    padding: 2.5rem;
+    border-radius: 12px;
+    border: 1px solid #444;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+    text-align: center;
+}
+
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    color: #f0f0f0;
+}
+
+.modal-inputs {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.modal-inputs div {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.modal-inputs label {
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    color: #ccc;
+}
+
+.modal-inputs input {
+    font-size: 1.1rem;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border: 1px solid #555;
+    background-color: #333;
+    color: white;
+    width: 80px;
+    text-align: center;
+}
+
+#start-btn {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: white;
+    background-color: #4CAF50;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#start-btn:hover {
+    background-color: #45a049;
+}
+
+/* --- NEW: Tutorial Styles --- */
+#tutorial-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(2px); /* Frosted glass effect */
+    z-index: 1001; /* Above modal */
+    display: none; /* Hidden by default */
+}
+
+/* Make the highlight transition smoothly */
+.tutorial-highlight {
+    position: relative; /* Must be relative for z-index */
+    z-index: 1002; /* Above overlay */
+    box-shadow: 0 0 15px 5px rgba(52, 152, 219, 0.8) !important; /* Use !important to override other shadows */
+    border-radius: 6px;
+    transition: box-shadow 0.3s ease-in-out;
+}
+
+/* All elements in the panel can transition */
+.editor-panel > *, .editor-panel div {
+    transition: box-shadow 0.3s ease-in-out;
+}
+
+
+#tutorial-step {
+    position: absolute;
+    background-color: #3b3b3b; /* Darker, richer background */
+    border: 1px solid #555;
+    border-radius: 12px; /* More rounded */
+    padding: 1.5rem;
+    width: 300px;
+    z-index: 1003; /* Above everything */
+    box-shadow: 0 5px 20px rgba(0,0,0,0.5); /* Deeper shadow */
+    display: none; /* Hidden by default */
+}
+
+#tutorial-step h3 {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    color: #f5f5f5; /* Brighter title */
+    font-weight: 600;
+}
+
+#tutorial-step p {
+    font-size: 0.95rem; /* Slightly larger text */
+    line-height: 1.6;
+    color: #ccc;
+    margin-bottom: 0;
+}
+
+.tutorial-nav {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #555;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#tutorial-counter {
+    font-size: 0.9rem;
+    color: #999;
+}
+
+.tutorial-nav-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.tutorial-nav-buttons button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background-color 0.2s ease;
+}
+
+.tutorial-nav-buttons button:hover {
+    background-color: #0056b3;
+}
+
+/* Make "End" button less prominent */
+.tutorial-nav-buttons button#tutorial-end {
+    background: none;
+    color: #aaa;
+    padding: 0.5rem;
+}
+
+.tutorial-nav-buttons button#tutorial-end:hover {
+    background: #444;
+    color: white;
+}
+
+.tutorial-nav-buttons button:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+/* --- End of Tutorial Styles --- */
+
+/* --- NEW: Demo Cursor Styles --- */
+#demo-cursor {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 24px;
+    height: 24px;
+    z-index: 2000; /* Above everything */
+    display: none; /* Hidden by default */
+    pointer-events: none; /* Click through */
+    transition: transform 0.1s linear, opacity 0.2s ease;
+    opacity: 0;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+#demo-cursor.mousedown svg {
+    transform: scale(0.8) rotate(20deg); /* Simulate click + maintain rotation */
+}
+/* --- End Demo Cursor Styles --- */
