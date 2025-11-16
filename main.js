@@ -140,7 +140,12 @@ const tutorialSteps = [
     {
         element: '#find-path-btn',
         title: '4. Find Route!',
+<<<<<<< HEAD
         text: 'Great! Now, click the "Find Route" button to see both algorithms run.', 
+=======
+        text: 'Great! Now, click the "Find Optimal Route" button to see the magic.', // MODIFIED: Updated text
+        // REMOVED: demo: 'click-find-path',
+>>>>>>> ab392d4471940dc1fbb1f5ec7cb65140d1bfa640
         waitFor: { type: 'click', element: '#find-path-btn' }
     },
     {
@@ -1017,6 +1022,10 @@ async function showTutorialStep(index) {
                     tutorialClickListener = { element: targetElement, handler: handler };
                 }
             } else if (step.waitFor.type === 'custom') {
+<<<<<<< HEAD
+=======
+                // --- MODIFIED: More descriptive text ---
+>>>>>>> ab392d4471940dc1fbb1f5ec7cb65140d1bfa640
                 if (step.waitFor.event === 'build') {
                     tutorialText.textContent = `Now you try it! Click or drag on any empty (dark grey) squares to build obstacles.`;
                 } else if (step.waitFor.event === 'erase') {
@@ -1026,9 +1035,16 @@ async function showTutorialStep(index) {
                 } else {
                     tutorialText.textContent = `Now you try it on the grid. We'll wait...`;
                 }
+<<<<<<< HEAD
                 
                 currentTutorialWait = step.waitFor; 
                 editorContainer.classList.remove('disabled'); 
+=======
+                // --- END MODIFIED ---
+                
+                currentTutorialWait = step.waitFor; // Now we wait for the user
+                editorContainer.classList.remove('disabled'); // Enable grid for user
+>>>>>>> ab392d4471940dc1fbb1f5ec7cb65140d1bfa640
             }
         } else {
             tutorialText.textContent = `Now you try it. Add as many stops as you like, then click "Next".`;
@@ -1216,6 +1232,7 @@ startBtn.addEventListener('click', () => {
         setTimeout(startTutorial, 500); 
     }
 });
+<<<<<<< HEAD
 
 // --- Initial check in case modal is skipped by localstorage ---
 if (document.getElementById('startup-modal').style.display === 'none') {
@@ -1225,3 +1242,5 @@ if (document.getElementById('startup-modal').style.display === 'none') {
     cols = Math.min(Math.max(cols, 5), 50);
     init(rows, cols);
 }
+=======
+>>>>>>> ab392d4471940dc1fbb1f5ec7cb65140d1bfa640
