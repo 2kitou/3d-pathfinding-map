@@ -8,21 +8,21 @@
  * @returns {object} An object { path, distance, visitedNodes }
  */
 function findShortestPathBFS(grid, start, end, GRID_ROWS, GRID_COLS) {
-    const queue = []; // This is our openSet, used as a FIFO queue
-    const cameFrom = new Map(); // To reconstruct path
-    const visited = new Set(); // This is our closedSet
-    const visitedNodesOrder = []; // For animation
+    const queue = [];
+    const cameFrom = new Map();
+    const visited = new Set();
+    const visitedNodesOrder = [];
 
     const startKey = `${start.r},${start.c}`;
     queue.push(start);
     visited.add(startKey);
-    cameFrom.set(startKey, null); // Start has no predecessor
+    cameFrom.set(startKey, null);
 
     while (queue.length > 0) {
-        const current = queue.shift(); // Get from the front (FIFO)
+        const current = queue.shift();
         const currentKey = `${current.r},${current.c}`;
         
-        visitedNodesOrder.push(currentKey); // Add to animation list
+        visitedNodesOrder.push(currentKey);
 
         if (current.r === end.r && current.c === end.c) {
             // Path found, reconstruct
@@ -47,14 +47,14 @@ function findShortestPathBFS(grid, start, end, GRID_ROWS, GRID_COLS) {
 
             if (neighbor.r < 0 || neighbor.r >= GRID_ROWS || 
                 neighbor.c < 0 || neighbor.c >= GRID_COLS ||
-                grid[neighbor.r][neighbor.c] === 1 || // Is it an obstacle?
-                visited.has(nKey)) { // Already visited?
+                grid[neighbor.r][neighbor.c] === 1 || 
+                visited.has(nKey)) {
                 continue;
             }
 
-            visited.add(nKey); // Mark as visited
-            cameFrom.set(nKey, current); // Record path
-            queue.push(neighbor); // Add to end of queue
+            visited.add(nKey);
+            cameFrom.set(nKey, current);
+            queue.push(neighbor);
         }
     }
 
@@ -63,7 +63,7 @@ function findShortestPathBFS(grid, start, end, GRID_ROWS, GRID_COLS) {
 }
 
 /**
- * Finds the shortest multi-stop path (BFS).
+ * Finds the shortest multi-stop path (BFS Nearest Neighbor).
  * @returns {object} An object { fullPath, stopOrder, totalDistance, allVisitedNodes }
  */
 export function findMultiStopPathBFS(grid, start, targets, GRID_ROWS, GRID_COLS) {
@@ -72,23 +72,23 @@ export function findMultiStopPathBFS(grid, start, targets, GRID_ROWS, GRID_COLS)
     let fullPath = [start];
     let totalDistance = 0;
     let stopOrder = [start];
-    let allVisitedNodes = new Set(); // Use a Set for unique nodes, preserves insertion order
+    let allVisitedNodes = new Set();
 
     while (remainingTargets.length > 0) {
         let bestNextTarget = null;
         let minDistance = Infinity;
         let shortestSegment = null;
-        let segmentVisitedNodes = []; // Array for animation order
+        let segmentVisitedNodes = [];
 
         // Find the *nearest* remaining target using BFS
         for (const target of remainingTargets) {
-            const { path, distance, visitedNodes } = findShortestPathBFS(grid, currentPos, target, GRID_ROWS, GRID_COLS); // <--- Call BFS
+            const { path, distance, visitedNodes } = findShortestPathBFS(grid, currentPos, target, GRID_ROWS, GRID_COLS);
 
             if (path && distance < minDistance) {
                 minDistance = distance;
                 bestNextTarget = target;
                 shortestSegment = path;
-                segmentVisitedNodes = visitedNodes; // Store this segment's visited nodes
+                segmentVisitedNodes = visitedNodes;
             }
         }
 
@@ -105,7 +105,8 @@ export function findMultiStopPathBFS(grid, start, targets, GRID_ROWS, GRID_COLS)
         totalDistance += minDistance;
         stopOrder.push(bestNextTarget);
         currentPos = bestNextTarget;
-        remainingTargets = remainingTargets.filter(t => t !== bestNextTarget);
+        // CORRECTED: Use r/c coordinates for reliable filtering of target objects
+        remainingTargets = remainingTargets.filter(t => t.r !== bestNextTarget.r || t.c !== bestNextTarget.c);
     }
 
     return { fullPath, stopOrder, totalDistance, allVisitedNodes };

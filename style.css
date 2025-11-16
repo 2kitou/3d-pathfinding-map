@@ -1,5 +1,5 @@
-/* ... existing styles ... */
-
+/* CSS merged from style.css */
+        
 .mode-btn:disabled, #find-path-btn:disabled {
     background-color: #555;
     color: #999;
@@ -11,7 +11,6 @@
     opacity: 0.7;
 }
 
-/* ... all other styles ... */
 body {
     font-family: 'Inter', sans-serif;
     margin: 0;
@@ -32,7 +31,6 @@ header {
     text-align: center;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     z-index: 10;
-    /* NEW: Flex for help button */
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -42,12 +40,11 @@ header h1 {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
-    /* REMOVED: margin-left: auto; */
     flex: 2; /* Give title more space */
     text-align: center; /* Center the title */
 }
 
-/* NEW: Help Button */
+/* Help Button */
 #help-btn {
     background-color: #007bff;
     color: white;
@@ -62,7 +59,7 @@ header h1 {
     background-color: #0056b3;
 }
 
-/* NEW: Add rules for flex layout */
+/* Add rules for flex layout */
 .header-left, .header-right {
     flex: 1;
 }
@@ -111,7 +108,6 @@ header h1 {
     display: grid;
     border: 1px solid #555; /* Darker border */
     margin-top: 1rem;
-    /* Grid columns will be set by JS */
     user-select: none; /* Prevent text selection while dragging */
 }
 
@@ -155,7 +151,7 @@ header h1 {
     transform: scale(1.1);
     box-shadow: 0 0 10px #4CAF50;
 }
-/* MODIFIED: Changed from "end" to "stop" */
+
 .grid-cell[data-type="stop"]::after {
     background-color: #F44336; /* Red */
     border: 1px solid #E57373;
@@ -197,8 +193,6 @@ header h1 {
     flex-direction: column;
     gap: 0.75rem;
 }
-
-/* REMOVED ALGO SELECTOR */
 
 #pathfinding-controls h3 {
     margin: 0;
@@ -244,7 +238,7 @@ header h1 {
     background-color: #45a049;
 }
 
-/* NEW: Disabled state for buttons */
+/* Disabled state for buttons */
 .mode-btn:disabled, #find-path-btn:disabled {
     background-color: #555;
     color: #999;
@@ -261,25 +255,22 @@ header h1 {
 }
 
 /* Right Panel: 3D Canvas */
-/* MODIFIED: This is now a flex container for two scenes */
 .visualization-container {
     flex: 1; /* Takes up remaining space */
     display: flex;
-    flex-direction: row; /* MODIFIED: Changed back to 'row' */
+    flex-direction: row; 
     background-color: #222222; /* Match body background */
 }
 
 .canvas-container {
-    flex: 1 1 50%; /* Grow, Shrink, Basis 50% */
+    flex: 1 1 33.33%; /* Grow, Shrink, Basis 33.33% */
     position: relative;
-    /* MODIFIED: Removed border-left */
     overflow: hidden; /* Added to contain canvas */
 }
 
-/* NEW: Add a border-top to the bottom canvas */
-#canvas-container-bfs {
-    border-top: none; /* REMOVED: border-top */
-    border-left: 1px solid #444; /* ADDED: border-left */
+#canvas-container-bfs,
+#canvas-container-ga {
+    border-left: 1px solid #444;
 }
 
 .canvas-container h3 {
@@ -297,15 +288,17 @@ header h1 {
 }
 
 #three-canvas-astar,
-#three-canvas-bfs {
+#three-canvas-bfs,
+#three-canvas-ga {
     display: block;
     width: 100%;
     height: 100%;
 }
 
-/* NEW: Container for 3D labels */
+/* Container for 3D labels */
 #label-container-astar,
-#label-container-bfs {
+#label-container-bfs,
+#label-container-ga {
     position: absolute;
     top: 0;
     left: 0;
@@ -314,7 +307,7 @@ header h1 {
     pointer-events: none; /* Lets clicks pass through to the canvas */
 }
 
-/* NEW: Style for 3D labels */
+/* Style for 3D labels */
 .stop-label {
     color: white;
     background: rgba(0, 0, 0, 0.6);
@@ -326,7 +319,7 @@ header h1 {
     transform: translate(10px, -10px); /* Offset from the marker center */
 }
 
-/* NEW: Startup Modal Styles */
+/* Startup Modal Styles */
 #startup-modal {
     position: fixed;
     top: 0;
@@ -347,6 +340,9 @@ header h1 {
     border: 1px solid #444;
     box-shadow: 0 5px 20px rgba(0,0,0,0.4);
     text-align: center;
+    max-width: 900px;
+    width: 90%;
+    position: relative;
 }
 
 .modal-content h2 {
@@ -401,7 +397,7 @@ header h1 {
     background-color: #45a049;
 }
 
-/* --- NEW: Tutorial Styles --- */
+/* Tutorial Styles */
 #tutorial-overlay {
     position: fixed;
     top: 0;
@@ -409,16 +405,16 @@ header h1 {
     width: 100%;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(2px); /* Frosted glass effect */
-    z-index: 1001; /* Above modal */
-    display: none; /* Hidden by default */
+    backdrop-filter: blur(2px);
+    z-index: 1001;
+    display: none;
 }
 
 /* Make the highlight transition smoothly */
 .tutorial-highlight {
-    position: relative; /* Must be relative for z-index */
-    z-index: 1002; /* Above overlay */
-    box-shadow: 0 0 15px 5px rgba(52, 152, 219, 0.8) !important; /* Use !important to override other shadows */
+    position: relative;
+    z-index: 1002;
+    box-shadow: 0 0 15px 5px rgba(52, 152, 219, 0.8) !important;
     border-radius: 6px;
     transition: box-shadow 0.3s ease-in-out;
 }
@@ -431,25 +427,25 @@ header h1 {
 
 #tutorial-step {
     position: absolute;
-    background-color: #3b3b3b; /* Darker, richer background */
+    background-color: #3b3b3b;
     border: 1px solid #555;
-    border-radius: 12px; /* More rounded */
+    border-radius: 12px;
     padding: 1.5rem;
     width: 300px;
-    z-index: 1003; /* Above everything */
-    box-shadow: 0 5px 20px rgba(0,0,0,0.5); /* Deeper shadow */
-    display: none; /* Hidden by default */
+    z-index: 1003;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+    display: none;
 }
 
 #tutorial-step h3 {
     margin-top: 0;
     margin-bottom: 0.75rem;
-    color: #f5f5f5; /* Brighter title */
+    color: #f5f5f5;
     font-weight: 600;
 }
 
 #tutorial-step p {
-    font-size: 0.95rem; /* Slightly larger text */
+    font-size: 0.95rem;
     line-height: 1.6;
     color: #ccc;
     margin-bottom: 0;
@@ -506,24 +502,84 @@ header h1 {
     cursor: not-allowed;
     opacity: 0.7;
 }
-/* --- End of Tutorial Styles --- */
 
-/* --- NEW: Demo Cursor Styles --- */
+/* Demo Cursor Styles */
 #demo-cursor {
     position: fixed;
     top: 50%;
     left: 50%;
     width: 24px;
     height: 24px;
-    z-index: 2000; /* Above everything */
-    display: none; /* Hidden by default */
-    pointer-events: none; /* Click through */
+    z-index: 2000;
+    display: none;
+    pointer-events: none;
     transition: transform 0.1s linear, opacity 0.2s ease;
     opacity: 0;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
 }
 
 #demo-cursor.mousedown svg {
-    transform: scale(0.8) rotate(20deg); /* Simulate click + maintain rotation */
+    transform: scale(0.8) rotate(20deg);
 }
-/* --- End Demo Cursor Styles --- */
+
+/* Comparison Modal Styles */
+#comparison-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(2px);
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 2rem;
+    color: #aaa;
+    background: none;
+    border: none;
+    cursor: pointer;
+    line-height: 1;
+}
+.modal-close-btn:hover {
+    color: #fff;
+}
+
+#comparison-table {
+    width: 100%;
+    margin-top: 1.5rem;
+    border-collapse: collapse;
+    color: #f0f0f0;
+}
+
+#comparison-table th,
+#comparison-table td {
+    border: 1px solid #555;
+    padding: 0.75rem;
+    text-align: left;
+}
+
+#comparison-table th {
+    background-color: #333;
+    font-weight: 600;
+}
+
+#comparison-table td {
+    background-color: #2f2f2f;
+}
+
+#comparison-table tbody tr:nth-child(even) td {
+    background-color: #353535;
+}
+
+#comparison-table td:first-child {
+    font-weight: 600;
+    color: #ccc;
+}

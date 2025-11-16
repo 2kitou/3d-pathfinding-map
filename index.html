@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A* vs. BFS Side-by-Side Comparison</title>
+    <title>A* vs. BFS vs. GA Comparison</title>
     
     <!-- Link to external CSS file -->
     <link rel="stylesheet" href="style.css">
@@ -19,7 +19,7 @@
         <div class="header-left">
             <button id="help-btn">Help</button>
         </div>
-        <h1>A* vs. BFS Comparison</h1>
+        <h1>A* vs. BFS vs. GA Comparison</h1>
         <div class="header-right"></div>
     </header>
 
@@ -38,7 +38,7 @@
                 <div class="mode-buttons">
                     <button class="mode-btn active" id="btn-build" data-mode="BUILD">Build Mode</button>
                     <button class="mode-btn" id="btn-start" data-mode="SET_START">Set Start</button>
-                    <button class="mode-btn" id="btn-stop" data-mode="SET_STOP">Add/Remove Stop</button>
+                    <button class="mode-btn" id="btn-stop" data-mode="SET_CHECKPOINT">Add/Remove Checkpoint</button>
                 </div>
                 <button id="find-path-btn">Find Route</button>
                 <div id="message-box"></div>
@@ -55,15 +55,19 @@
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #007bff;"></div>
-                    <span>Visited Node</span>
+                    <span>Visited Node (A*/BFS)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #9C27B0;"></div>
+                    <span>Visited Node (GA)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #F44336;"></div>
-                    <span>Stop Point</span>
+                    <span>Checkpoint</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #00E676;"></div>
-                    <span>Stop (Completed)</span>
+                    <span>Checkpoint (Completed)</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #00BCD4;"></div>
@@ -76,15 +80,21 @@
         <div class="visualization-container">
             
             <div class="canvas-container" id="canvas-container-astar">
-                <h3>A* (Heuristic)</h3>
+                <h3>A* (Nearest Neighbor)</h3>
                 <canvas id="three-canvas-astar"></canvas>
                 <div id="label-container-astar"></div>
             </div>
             
             <div class="canvas-container" id="canvas-container-bfs">
-                <h3>BFS (Uninformed)</h3>
+                <h3>BFS (Nearest Neighbor)</h3>
                 <canvas id="three-canvas-bfs"></canvas>
                 <div id="label-container-bfs"></div>
+            </div>
+            
+            <div class="canvas-container" id="canvas-container-ga">
+                <h3>Genetic Algorithm (TSP)</h3>
+                <canvas id="three-canvas-ga"></canvas>
+                <div id="label-container-ga"></div>
             </div>
 
         </div>
@@ -98,14 +108,15 @@
             <div class="modal-inputs">
                 <div>
                     <label for="input-rows">Rows (5-50)</label>
-                    <input type="number" id="input-rows" value="20" min="5" max="50">
+                    <input type="number" id="input-rows" value="25" min="5" max="50">
                 </div>
                 <div>
                     <label for="input-cols">Columns (5-50)</label>
-                    <input type="number" id="input-cols" value="20" min="5" max="50">
+                    <input type="number" id="input-cols" value="25" min="5" max="50">
                 </div>
             </div>
             <button id="start-btn">Start Building</button>
+            
         </div>
     </div>
     
@@ -131,6 +142,53 @@
             <path d="M7.071 5.636a2 2 0 0 1 2.828 0l1.414 1.414a2 2 0 0 0 2.828 0l4.243-4.242a2 2 0 0 1 2.828 2.828L17 12.879a2 2 0 0 0 0 2.828l1.414 1.414a2 2 0 0 1 0 2.828l-1.414 1.414a2 2 0 0 1-2.828 0L12.879 17a2 2 0 0 0-2.828 0l-1.414 1.414a2 2 0 0 1-2.828 0L4.464 17a2 2 0 0 1 0-2.828l1.414-1.414a2 2 0 0 0 0-2.828L1.636 8.464a2 2 0 0 1 0-2.828L3 4.222a2 2 0 0 1 2.828 0L7.07 5.636z"/>
         </svg>
     </div>
+
+    <!-- Comparison Results Modal -->
+    <div id="comparison-modal">
+        <div class="modal-content">
+            <button id="close-comparison-btn" class="modal-close-btn">&times;</button>
+            <h2>Algorithm Comparison</h2>
+            <p>Here's a breakdown of how each algorithm performed on the last run.</p>
+            
+            <table id="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>A* (Nearest Neighbor)</th>
+                        <th>BFS (Nearest Neighbor)</th>
+                        <th>Genetic Algorithm (TSP)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Solution Quality (Distance)</td>
+                        <td id="astar-quality">N/A</td>
+                        <td id="bfs-quality">N/A</td>
+                        <td id="ga-quality">N/A</td>
+                    </tr>
+                    <tr>
+                        <td>Execution Time (ms)</td>
+                        <td id="astar-time">N/A</td>
+                        <td id="bfs-time">N/A</td>
+                        <td id="ga-time">N/A</td>
+                    </tr>
+                    <tr>
+                        <td>Memory Usage (Visited Nodes)</td>
+                        <td id="astar-memory">N/A</td>
+                        <td id="bfs-memory">N/A</td>
+                        <td id="ga-memory">N/A</td>
+                    </tr>
+                    <tr>
+                        <td>Success Rate</td>
+                        <td id="astar-success">N/A</td>
+                        <td id="bfs-success">N/A</td>
+                        <td id="ga-success">N/A</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <!-- End Comparison Modal -->
 
     <!-- Three.js Libraries -->
     <script type="importmap">

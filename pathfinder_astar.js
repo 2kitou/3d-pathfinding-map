@@ -17,10 +17,10 @@ function heuristic(a, b) {
  * @param {number} GRID_COLS - Total columns in the grid
  * @returns {object} An object { path, distance, visitedNodes }
  */
-function findShortestPathAStar(grid, start, end, GRID_ROWS, GRID_COLS) {
+export function findShortestPathAStar(grid, start, end, GRID_ROWS, GRID_COLS) {
     const openSet = []; 
-    const closedSet = new Set(); // For fast lookup
-    const visitedNodesOrder = []; // For animation
+    const closedSet = new Set();
+    const visitedNodesOrder = []; 
     const scores = new Map(); 
     
     const startKey = `${start.r},${start.c}`;
@@ -49,12 +49,11 @@ function findShortestPathAStar(grid, start, end, GRID_ROWS, GRID_COLS) {
                 tempKey = `${temp.r},${temp.c}`;
             }
             path.push(start);
-            // MODIFIED: Return the ordered list
             return { path: path.reverse(), distance: scores.get(currentKey).g, visitedNodes: visitedNodesOrder };
         }
 
         closedSet.add(currentKey);
-        visitedNodesOrder.push(currentKey); // <-- Add to ordered list
+        visitedNodesOrder.push(currentKey);
 
         const neighbors = [
             { r: current.r + 1, c: current.c }, { r: current.r - 1, c: current.c },
@@ -67,14 +66,18 @@ function findShortestPathAStar(grid, start, end, GRID_ROWS, GRID_COLS) {
             // Check if neighbor is valid
             if (neighbor.r < 0 || neighbor.r >= GRID_ROWS || 
                 neighbor.c < 0 || neighbor.c >= GRID_COLS ||
-                grid[neighbor.r][neighbor.c] === 1 || // Is it an obstacle?
-                closedSet.has(nKey)) { // <-- Check the Set
+                grid[neighbor.r][neighbor.c] === 1 ||
+                closedSet.has(nKey)) {
                 continue;
             }
 
-            const tentativeGScore = scores.get(currentKey).g + 1;
+            const currentScore = scores.get(currentKey);
+            const tentativeGScore = (currentScore ? currentScore.g : Infinity) + 1;
 
-            if (!scores.has(nKey) || tentativeGScore < scores.get(nKey).g) {
+
+            const existingScore = scores.get(nKey);
+            
+            if (!existingScore || tentativeGScore < existingScore.g) {
                 // This is a better path to this neighbor
                 scores.set(nKey, {
                     g: tentativeGScore,
@@ -87,7 +90,7 @@ function findShortestPathAStar(grid, start, end, GRID_ROWS, GRID_COLS) {
                 for(let i=0; i < openSet.length; i++) {
                     if(openSet[i].r === neighbor.r && openSet[i].c === neighbor.c) {
                         inOpenSet = true;
-                        openSet[i].f = scores.get(nKey).f; // Update f-score
+                        openSet[i].f = scores.get(nKey).f;
                         break;
                     }
                 }
@@ -99,12 +102,11 @@ function findShortestPathAStar(grid, start, end, GRID_ROWS, GRID_COLS) {
     }
 
     // No path found
-    // MODIFIED: Return the ordered list
     return { path: null, distance: Infinity, visitedNodes: visitedNodesOrder };
 }
 
 /**
- * Finds the shortest multi-stop path (A*).
+ * Finds the shortest multi-stop path (A* Nearest Neighbor).
  * @returns {object} An object { fullPath, stopOrder, totalDistance, allVisitedNodes }
  */
 export function findMultiStopPath(grid, start, targets, GRID_ROWS, GRID_COLS) {
@@ -113,23 +115,23 @@ export function findMultiStopPath(grid, start, targets, GRID_ROWS, GRID_COLS) {
     let fullPath = [start];
     let totalDistance = 0;
     let stopOrder = [start];
-    let allVisitedNodes = new Set(); // Use a Set for unique nodes, preserves insertion order
+    let allVisitedNodes = new Set(); 
 
     while (remainingTargets.length > 0) {
         let bestNextTarget = null;
         let minDistance = Infinity;
         let shortestSegment = null;
-        let segmentVisitedNodes = []; // This is an array
+        let segmentVisitedNodes = []; 
 
         // Find the *nearest* remaining target
         for (const target of remainingTargets) {
-            const { path, distance, visitedNodes } = findShortestPathAStar(grid, currentPos, target, GRID_ROWS, GRID_COLS); // visitedNodes is an array
+            const { path, distance, visitedNodes } = findShortestPathAStar(grid, currentPos, target, GRID_ROWS, GRID_COLS);
             
             if (path && distance < minDistance) {
                 minDistance = distance;
                 bestNextTarget = target;
                 shortestSegment = path;
-                segmentVisitedNodes = visitedNodes; // Store *this* array
+                segmentVisitedNodes = visitedNodes;
             }
         }
 
@@ -138,15 +140,14 @@ export function findMultiStopPath(grid, start, targets, GRID_ROWS, GRID_COLS) {
             return { fullPath: null, stopOrder, totalDistance: Infinity, allVisitedNodes };
         }
 
-        // Add the best segment's visited nodes to the total
-        segmentVisitedNodes.forEach(nodeKey => allVisitedNodes.add(nodeKey)); // Add only the winning segment's nodes
+        segmentVisitedNodes.forEach(nodeKey => allVisitedNodes.add(nodeKey));
 
-        // Add the best segment to our full path
-        fullPath.push(...shortestSegment.slice(1)); // .slice(1) to avoid duplicating nodes
+        fullPath.push(...shortestSegment.slice(1));
         totalDistance += minDistance;
         stopOrder.push(bestNextTarget);
         currentPos = bestNextTarget;
-        remainingTargets = remainingTargets.filter(t => t !== bestNextTarget);
+        // CORRECTED: Use r/c coordinates for reliable filtering of target objects
+        remainingTargets = remainingTargets.filter(t => t.r !== bestNextTarget.r || t.c !== bestNextTarget.c);
     }
 
     return { fullPath, stopOrder, totalDistance, allVisitedNodes };

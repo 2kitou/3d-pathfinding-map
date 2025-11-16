@@ -1,6 +1,7 @@
 // --- Import Pathfinding Logic ---
 import { findMultiStopPath } from './pathfinder_astar.js';
-import { findMultiStopPathBFS } from './pathfinder_bfs.js';
+import { findMultiStopPathBFS }from './pathfinder_bfs.js';
+import { findMultiStopPathGA } from './pathfinder_ga.js'; // CORRECTED: Changed import name from pathfinder_gs.js
 
 // --- Import Three.js ---
 import * as THREE from 'three';
@@ -13,7 +14,6 @@ let GRID_COLS;
 const CELL_SIZE = 1;
 const PATH_HEIGHT = 0.2;
 const BUILDING_HEIGHT = 2;
-const clock = new THREE.Clock(); // For animation delta time
 
 // Geometries (re-used for efficiency)
 const pathGeometry = new THREE.BoxGeometry(CELL_SIZE, PATH_HEIGHT, CELL_SIZE);
@@ -27,10 +27,17 @@ const pathMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, roughness
 const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, metalness: 0.0 });
 const startMaterial = new THREE.MeshStandardMaterial({ color: 0x4CAF50, emissive: 0x4CAF50, emissiveIntensity: 0.5 });
 const stopMaterial = new THREE.MeshStandardMaterial({ color: 0xF44336, emissive: 0xF44336, emissiveIntensity: 0.5 });
-const stopCompleteMaterial = new THREE.MeshStandardMaterial({ color: 0x00E676, emissive: 0x00E676, emissiveIntensity: 0.8 }); // Bright green
+const stopCompleteMaterial = new THREE.MeshStandardMaterial({ color: 0x00E676, emissive: 0x00E676, emissiveIntensity: 0.8 });
 const visitedMaterial = new THREE.MeshStandardMaterial({ 
     color: 0x007bff, 
     emissive: 0x007bff, 
+    emissiveIntensity: 0.4, 
+    opacity: 0.6, 
+    transparent: true 
+});
+const visitedMaterialGA = new THREE.MeshStandardMaterial({ 
+    color: 0x9C27B0, // Purple
+    emissive: 0x9C27B0, 
     emissiveIntensity: 0.4, 
     opacity: 0.6, 
     transparent: true 
@@ -42,9 +49,10 @@ const animatedPathMaterial = new THREE.MeshStandardMaterial({
     emissiveIntensity: 0.7 
 });
 
-// --- NEW: Two sets of Three.js variables ---
+// --- Three sets of Three.js variables ---
 let sceneAstar, cameraAstar, rendererAstar, controlsAstar, mapGroupAstar, labelRendererAstar;
 let sceneBfs, cameraBfs, rendererBfs, controlsBfs, mapGroupBfs, labelRendererBfs;
+let sceneGa, cameraGa, rendererGa, controlsGa, mapGroupGa, labelRendererGa;
 
 let gridData = [];
 let editorCells = [];
@@ -54,12 +62,12 @@ let currentMode = "BUILD";
 let startCoords = null;
 let stopCoords = [];
 
-// --- NEW: Scene-specific state ---
-let startMarkerAstar = null, startMarkerBfs = null;
-let stopMarkersAstar = [], stopMarkersBfs = [];
-let stopLabelsAstar = [], stopLabelsBfs = [];
-let pathMeshesAstar = [], pathMeshesBfs = [];
-let visitedMeshesAstar = [], visitedMeshesBfs = [];
+// --- Scene-specific state ---
+let startMarkerAstar = null, startMarkerBfs = null, startMarkerGa = null;
+let stopMarkersAstar = [], stopMarkersBfs = [], stopMarkersGa = [];
+let stopLabelsAstar = [], stopLabelsBfs = [], stopLabelsGa = [];
+let pathMeshesAstar = [], pathMeshesBfs = [], pathMeshesGa = [];
+let visitedMeshesAstar = [], visitedMeshesBfs = [], visitedMeshesGa = [];
 
 let isDrawing = false;
 let drawingValue = 0;
@@ -86,29 +94,28 @@ let highlightedElement = null;
 
 // --- Tutorial Logic Flags ---
 let isTutorialActive = false;
-let currentTutorialWait = null; // Stores the current 'waitFor' condition
-let tutorialClickListener = null; // Stores the 'click' listener to remove it
+let currentTutorialWait = null;
+let tutorialClickListener = null;
 
-// --- MODIFIED: New interactive tutorial steps with DEMO property ---
 const tutorialSteps = [
     {
         element: '#grid-editor-container',
         title: 'Welcome! The 2D Grid',
         text: 'This is the 2D "Pixel Block" Editor. We will build our map here. Click "Next".',
-        waitFor: null // User just clicks "Next"
+        waitFor: null
     },
     {
         element: '#grid-editor-container',
         title: '1. Build Obstacles',
-        text: 'First, watch this demo on how to "paint" buildings.', // New text
-        demo: 'build', // New property
+        text: 'First, watch this demo on how to "paint" buildings.',
+        demo: 'build',
         waitFor: { type: 'custom', event: 'build' }
     },
     {
         element: '#grid-editor-container',
         title: 'Erase Obstacles',
-        text: 'Great! Now, watch how to "erase" buildings.', // New text
-        demo: 'erase', // New property
+        text: 'Great! Now, watch how to "erase" buildings.',
+        demo: 'erase',
         waitFor: { type: 'custom', event: 'erase' }
     },
     {
@@ -120,38 +127,33 @@ const tutorialSteps = [
     {
         element: '#grid-editor-container',
         title: 'Place Start Point',
-        text: 'Watch this demo of placing the Start point.', // New text
-        demo: 'place-start', // New property
+        text: 'Watch this demo of placing the Start point.',
+        demo: 'place-start',
         waitFor: { type: 'custom', event: 'set_start' }
     },
     {
         element: '#btn-stop',
-        title: '3. Add Stops',
-        text: 'Click the "Add/Remove Stop" button to enter stop placement mode.', 
+        title: '3. Add Checkpoints',
+        text: 'Click the "Add/Remove Checkpoint" button to enter checkpoint placement mode.', 
         waitFor: { type: 'click', element: '#btn-stop' }
     },
     {
         element: '#grid-editor-container',
-        title: 'Place Stops',
-        text: 'You can add multiple stops. Watch this demo. Click "Next" when you\'re ready to try.', // New text
-        demo: 'place-stops', // New property
-        waitFor: null // User will add their own, then click Next
+        title: 'Place Checkpoints',
+        text: 'You can add multiple checkpoints. Watch this demo. Click "Next" when you\'re ready to try.',
+        demo: 'place-checkpoints',
+        waitFor: null
     },
     {
         element: '#find-path-btn',
         title: '4. Find Route!',
-<<<<<<< HEAD
-        text: 'Great! Now, click the "Find Route" button to see both algorithms run.', 
-=======
-        text: 'Great! Now, click the "Find Optimal Route" button to see the magic.', // MODIFIED: Updated text
-        // REMOVED: demo: 'click-find-path',
->>>>>>> ab392d4471940dc1fbb1f5ec7cb65140d1bfa640
+        text: 'Great! Now, click the "Find Route" button to see all three algorithms run.', 
         waitFor: { type: 'click', element: '#find-path-btn' }
     },
     {
         element: '.visualization-container',
         title: 'All Done!',
-        text: 'Watch the animations! You can orbit the 3D maps by clicking and dragging. Click "End" to finish the tutorial.',
+        text: 'Watch the animations! A*/BFS use a simple "Nearest Neighbor" logic. GA tries to find a smarter *order* to visit the stops (TSP).',
         waitFor: null
     }
 ];
@@ -159,18 +161,23 @@ const tutorialSteps = [
 
 // --- INITIALIZATION ---
 
-function init(rows, cols) {
+function init(rows, cols, loadedGrid = null) {
     GRID_ROWS = rows;
     GRID_COLS = cols;
 
-    createGridData();
+    if (loadedGrid) {
+        gridData = loadedGrid.map(row => [...row]);
+    } else {
+        createGridData();
+    }
+    
     createEditorUI();
     
-    // --- NEW: Init both scenes ---
     initThreeJS();
     
     generate3DMap(mapGroupAstar);
     generate3DMap(mapGroupBfs);
+    generate3DMap(mapGroupGa);
     
     modeButtons.forEach(btn => {
         btn.addEventListener('click', () => setMode(btn.dataset.mode));
@@ -190,10 +197,25 @@ function init(rows, cols) {
     tutorialEnd.addEventListener('click', endTutorial);
     tutorialOverlay.addEventListener('click', (e) => {
         if(e.target === tutorialOverlay) {
-            endTutorial(); // End if clicking on the dark background
+            endTutorial();
         }
     });
     // --- End Tutorial Listeners ---
+
+    // --- Comparison Modal Listeners ---
+    const comparisonModal = document.getElementById('comparison-modal');
+    const closeComparisonBtn = document.getElementById('close-comparison-btn');
+    
+    closeComparisonBtn.addEventListener('click', () => {
+        comparisonModal.style.display = 'none';
+    });
+    
+    comparisonModal.addEventListener('click', (e) => {
+        if (e.target.id === 'comparison-modal') {
+            comparisonModal.style.display = 'none';
+        }
+    });
+    // --- End Comparison Modal Listeners ---
 
     animate();
     
@@ -217,7 +239,7 @@ function createGridData() {
 }
 
 function createEditorUI() {
-    editorContainer.innerHTML = ''; // Clear previous
+    editorContainer.innerHTML = '';
     editorCells = [];
     editorContainer.style.gridTemplateColumns = `repeat(${GRID_COLS}, 1fr)`;
 
@@ -236,7 +258,7 @@ function createEditorUI() {
     }
 }
 
-// --- NEW: Generic scene creator ---
+// --- Generic scene creator ---
 function createScene(canvas, labelContainer) {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x222222);
@@ -280,7 +302,7 @@ function createScene(canvas, labelContainer) {
     return { scene, camera, renderer, controls, mapGroup, labelRenderer };
 }
 
-// --- NEW: Init both scenes ---
+// --- Init all three scenes ---
 function initThreeJS() {
     // A* Scene
     const canvasAstar = document.getElementById('three-canvas-astar');
@@ -303,44 +325,50 @@ function initThreeJS() {
     controlsBfs = sceneBfsData.controls;
     mapGroupBfs = sceneBfsData.mapGroup;
     labelRendererBfs = sceneBfsData.labelRenderer;
+    
+    // GA Scene
+    const canvasGa = document.getElementById('three-canvas-ga');
+    const labelContainerGa = document.getElementById('label-container-ga');
+    const sceneGaData = createScene(canvasGa, labelContainerGa);
+    sceneGa = sceneGaData.scene;
+    cameraGa = sceneGaData.camera;
+    rendererGa = sceneGaData.renderer;
+    controlsGa = sceneGaData.controls;
+    mapGroupGa = sceneGaData.mapGroup;
+    labelRendererGa = sceneGaData.labelRenderer;
 
-    // --- NEW: Auto-fit camera ---
-    // Determine the largest grid dimension
+    // --- Auto-fit camera ---
     const maxDim = Math.max(GRID_ROWS, GRID_COLS) * CELL_SIZE;
-    // Calculate a suitable camera distance.
-    // tan(fov/2) = (grid_radius) / distance
-    // We use maxDim as the diameter.
-    const fov = 40; // From createScene
+    const fov = 40; 
     const distance = (maxDim / 2) / Math.tan(THREE.MathUtils.degToRad(fov / 2));
     
-    // Add some padding (e.g., 50%) and set a minimum distance
-    // MODIFIED: Further tuning to match user's screenshot (tight zoom + steeper angle)
-    const camZ = Math.max(distance * 0.2, 10); // Z position (pull back) - Was 0.9
-    const camY = Math.max(distance * 2.0, 25); // Y position (height) - Was 1.3
+    const camZ = Math.max(distance * 1.8, 15); 
+    const camY = Math.max(distance * 2.1, 19); 
 
     cameraAstar.position.set(0, camY, camZ);
     cameraBfs.position.set(0, camY, camZ);
-    // --- End auto-fit camera ---
-
-    // --- NEW: Sync Controls ---
+    cameraGa.position.set(0, camY, camZ);
+    
+    // --- Sync Controls ---
     let isSyncing = false;
-    controlsAstar.addEventListener('change', () => {
-        if (isSyncing) return;
-        isSyncing = true;
-        cameraBfs.position.copy(cameraAstar.position);
-        cameraBfs.quaternion.copy(cameraAstar.quaternion);
-        controlsBfs.target.copy(controlsAstar.target);
-        isSyncing = false;
-    });
+    const syncControls = (sourceControls, targetControls1, targetControls2) => {
+         if (isSyncing) return;
+         isSyncing = true;
+         targetControls1.object.position.copy(sourceControls.object.position);
+         targetControls1.object.quaternion.copy(sourceControls.object.quaternion);
+         targetControls1.target.copy(sourceControls.target);
+         targetControls1.update();
+         
+         targetControls2.object.position.copy(sourceControls.object.position);
+         targetControls2.object.quaternion.copy(sourceControls.object.quaternion);
+         targetControls2.target.copy(sourceControls.target);
+         targetControls2.update();
+         isSyncing = false;
+    };
 
-    controlsBfs.addEventListener('change', () => {
-        if (isSyncing) return;
-        isSyncing = true;
-        cameraAstar.position.copy(cameraBfs.position);
-        cameraAstar.quaternion.copy(cameraBfs.quaternion);
-        controlsAstar.target.copy(controlsBfs.target);
-        isSyncing = false;
-    });
+    controlsAstar.addEventListener('change', () => syncControls(controlsAstar, controlsBfs, controlsGa));
+    controlsBfs.addEventListener('change', () => syncControls(controlsBfs, controlsAstar, controlsGa));
+    controlsGa.addEventListener('change', () => syncControls(controlsGa, controlsAstar, controlsBfs));
     // --- End Sync Controls ---
 
     window.addEventListener('resize', onWindowResize);
@@ -351,7 +379,6 @@ function initThreeJS() {
 
 function onGridMouseDown(event) {
     if (isTutorialActive) {
-        // ... (tutorial logic unchanged)
         const step = tutorialSteps[currentTutorialStep];
         if (currentTutorialWait && currentTutorialWait.type === 'custom') {
             const cell = event.target.closest('.grid-cell');
@@ -372,7 +399,7 @@ function onGridMouseDown(event) {
             }
             return; 
         }
-        if (step.demo === 'place-stops' && currentMode === 'SET_STOP') {
+        if (step.demo === 'place-checkpoints' && currentMode === 'SET_CHECKPOINT') {
             const cell = event.target.closest('.grid-cell');
             if (!cell) return;
             const r = parseInt(cell.dataset.r);
@@ -384,7 +411,7 @@ function onGridMouseDown(event) {
     }
 
     // --- Normal logic ---
-    clearAllPaths(); // MODIFIED
+    clearAllPaths();
     messageBox.textContent = '';
 
     const cell = event.target.closest('.grid-cell');
@@ -405,8 +432,7 @@ function onGridMouseDown(event) {
 
 function onGridMouseMove(event) {
     if (isTutorialActive) {
-        // ... (tutorial logic unchanged)
-         if (!isDrawing || currentMode !== "BUILD" || (currentTutorialWait?.event !== 'build' && currentTutorialWait?.event !== 'erase')) {
+        if (!isDrawing || currentMode !== "BUILD" || (currentTutorialWait?.event !== 'build' && currentTutorialWait?.event !== 'erase')) {
             return;
         }
         const cell = event.target.closest('.grid-cell');
@@ -427,8 +453,7 @@ function onGridMouseMove(event) {
 
 function onGridMouseUp(event) {
     if (isTutorialActive) {
-        // ... (tutorial logic unchanged)
-         if (isDrawing && currentTutorialWait) { 
+        if (isDrawing && currentTutorialWait) { 
             if (currentTutorialWait.type === 'custom' && currentTutorialWait.event === 'build' && drawingValue === 1) {
                 redraw3DMap(); 
                 nextTutorialStep();
@@ -443,7 +468,7 @@ function onGridMouseUp(event) {
 
     if (isDrawing) {
         isDrawing = false;
-        redraw3DMap(); // MODIFIED
+        redraw3DMap();
     }
 }
 
@@ -460,12 +485,12 @@ function applyDrawing(r, c) {
 function handlePathfindingClick(r, c) {
     if (startCoords && startCoords.r === r && startCoords.c === c) {
         startCoords = null;
-        clearAllMarkers(); // MODIFIED
+        clearAllMarkers();
     }
     let stopIndex = stopCoords.findIndex(stop => stop.r === r && stop.c === c);
     if (stopIndex > -1) {
         stopCoords.splice(stopIndex, 1);
-        clearAllMarkers(); // MODIFIED
+        clearAllMarkers();
     }
 
     if (currentMode === "SET_START") {
@@ -475,9 +500,9 @@ function handlePathfindingClick(r, c) {
         }
         startCoords = { r, c };
     } 
-    else if (currentMode === "SET_STOP") {
+    else if (currentMode === "SET_CHECKPOINT") {
         if (gridData[r][c] === 1) {
-            showMessage("Cannot place Stop on an obstacle!");
+            showMessage("Cannot place Checkpoint on an obstacle!");
             return;
         }
         if (stopIndex === -1) {
@@ -503,76 +528,173 @@ function setMode(mode) {
  */
 function onFindPathClick() {
     let wasTutorialWaiting = false;
-    // ... (tutorial logic unchanged)
     if (isTutorialActive && currentTutorialWait) {
-        if (currentTutorialWait.type === 'custom' && currentTutorialWait.event === 'find_path') {
-            wasTutorialWaiting = true;
-        }
         if (currentTutorialWait.type === 'click' && currentTutorialWait.element === '#find-path-btn') {
             wasTutorialWaiting = true;
         }
     }
     
-    // --- FIX 1: Clear all previous animations ---
     clearAllPaths();
-    // ------------------------------------------
 
     if (!startCoords || stopCoords.length === 0) {
-        showMessage("Please set a Start and at least one Stop point.");
+        showMessage("Please set a Start and at least one Checkpoint.");
         return;
     }
 
-    showMessage("Calculating routes...");
-    setUIEnabled(false); // Disable UI
+    showMessage("Calculating routes... (GA may take a moment)");
+    setUIEnabled(false);
     
+    let algorithmsFinished = 0;
+    const totalAlgorithms = 3;
+    
+    let results = { astar: null, bfs: null, ga: null };
+    let perf = { astar: {}, bfs: {}, ga: {} };
+    
+    const onAlgoDone = () => {
+        algorithmsFinished++;
+        if (algorithmsFinished === totalAlgorithms) {
+            setUIEnabled(true);
+            if (wasTutorialWaiting) nextTutorialStep();
+            showComparisonPopup(results);
+        }
+    };
+    
+    const updateMessage = () => {
+        let msg = "";
+        if (results.astar) msg += `A*: ${results.astar.totalDistance ? results.astar.totalDistance.toFixed(0) : 'Failed'} | `;
+        if (results.bfs) msg += `BFS: ${results.bfs.totalDistance ? results.bfs.totalDistance.toFixed(0) : 'Failed'} | `;
+        if (results.ga) msg += `GA: ${results.ga.totalDistance ? results.ga.totalDistance.toFixed(0) : 'Failed'}`;
+        showMessage(msg.replace(/ \|\s*$/, ""));
+    };
+
     setTimeout(() => {
-        // --- RUN BOTH ALGORITHMS ---
+        // --- RUN A* ---
+        perf.astar.start = performance.now();
         const resultAstar = findMultiStopPath(gridData, startCoords, stopCoords, GRID_ROWS, GRID_COLS);
-        const resultBfs = findMultiStopPathBFS(gridData, startCoords, stopCoords, GRID_ROWS, GRID_COLS);
-        
-        // --- VISUALIZE A* ---
+        perf.astar.end = performance.now();
+        results.astar = resultAstar;
+        results.astar.time = perf.astar.end - perf.astar.start;
+
         if (resultAstar.fullPath && resultAstar.fullPath.length > 0) {
-            animateVisitedNodes(resultAstar.allVisitedNodes, mapGroupAstar, visitedMeshesAstar, () => {
+            animateVisitedNodes(resultAstar.allVisitedNodes, mapGroupAstar, visitedMeshesAstar, visitedMaterial, () => {
                 drawPath(resultAstar.fullPath, pathMeshesAstar); 
                 animatePath(mapGroupAstar, pathMeshesAstar, () => {
                     addLabels(resultAstar.stopOrder, stopMarkersAstar, stopLabelsAstar);
-                    if (!resultBfs.fullPath) setUIEnabled(true); // Re-enable if BFS failed
+                    onAlgoDone();
                 });
             });
         } else {
-            showMessage("No path found for A*!");
-            if (!resultBfs.fullPath) setUIEnabled(true);
+            onAlgoDone();
         }
         
-        // --- VISUALIZE BFS ---
+        // --- RUN BFS ---
+        perf.bfs.start = performance.now();
+        const resultBfs = findMultiStopPathBFS(gridData, startCoords, stopCoords, GRID_ROWS, GRID_COLS);
+        perf.bfs.end = performance.now();
+        results.bfs = resultBfs;
+        results.bfs.time = perf.bfs.end - perf.bfs.start;
+        
         if (resultBfs.fullPath && resultBfs.fullPath.length > 0) {
-            animateVisitedNodes(resultBfs.allVisitedNodes, mapGroupBfs, visitedMeshesBfs, () => {
+            animateVisitedNodes(resultBfs.allVisitedNodes, mapGroupBfs, visitedMeshesBfs, visitedMaterial, () => {
                 drawPath(resultBfs.fullPath, pathMeshesBfs);
                 animatePath(mapGroupBfs, pathMeshesBfs, () => {
                     addLabels(resultBfs.stopOrder, stopMarkersBfs, stopLabelsBfs);
-                    setUIEnabled(true); // Re-enable UI
-                    if (wasTutorialWaiting) nextTutorialStep();
+                    onAlgoDone();
                 });
             });
         } else {
-            showMessage("No path found for BFS!");
-            setUIEnabled(true);
-            if (wasTutorialWaiting && !resultAstar.fullPath) nextTutorialStep();
+            onAlgoDone();
         }
         
-        // --- Handle message box ---
-        if(resultAstar.fullPath && resultBfs.fullPath) {
-            showMessage(`A* Length: ${resultAstar.totalDistance} | BFS Length: ${resultBfs.totalDistance}`);
-        } else if (resultAstar.fullPath) {
-            showMessage(`A* Length: ${resultAstar.totalDistance} | BFS failed.`);
-        } else if (resultBfs.fullPath) {
-            showMessage(`A* failed. | BFS Length: ${resultBfs.totalDistance}`);
-        } else {
-            showMessage("Both algorithms failed to find a path!");
-        }
+        // --- RUN GA ---
+        setTimeout(() => {
+            perf.ga.start = performance.now();
+            const resultGa = findMultiStopPathGA(gridData, startCoords, stopCoords, GRID_ROWS, GRID_COLS);
+            perf.ga.end = performance.now();
+            results.ga = resultGa;
+            results.ga.time = perf.ga.end - perf.ga.start;
+
+            if (resultGa.fullPath && resultGa.fullPath.length > 0) {
+                animateVisitedNodes(resultGa.allVisitedNodes, mapGroupGa, visitedMeshesGa, visitedMaterialGA, () => {
+                    drawPath(resultGa.fullPath, pathMeshesGa);
+                    animatePath(mapGroupGa, pathMeshesGa, () => {
+                        addLabels(resultGa.stopOrder, stopMarkersGa, stopLabelsGa);
+                        onAlgoDone();
+                    });
+                });
+            } else {
+                onAlgoDone();
+            }
+            updateMessage();
+        }, 20);
+        
+        updateMessage();
         
     }, 10);
 }
+
+// --- Comparison Popup Function ---
+function showComparisonPopup(results) {
+    const modal = document.getElementById('comparison-modal');
+
+    // --- A* Results ---
+    const astarQuality = document.getElementById('astar-quality');
+    const astarTime = document.getElementById('astar-time');
+    const astarMemory = document.getElementById('astar-memory');
+    const astarSuccess = document.getElementById('astar-success');
+    
+    if (results.astar && results.astar.totalDistance !== Infinity) {
+        astarQuality.textContent = results.astar.totalDistance.toFixed(0);
+        astarTime.textContent = results.astar.time.toFixed(2);
+        astarMemory.textContent = results.astar.allVisitedNodes.size;
+        astarSuccess.textContent = "Found Path";
+    } else {
+        astarQuality.textContent = "Failed";
+        astarTime.textContent = results.astar?.time ? results.astar.time.toFixed(2) : 'N/A';
+        astarMemory.textContent = results.astar?.allVisitedNodes ? results.astar.allVisitedNodes.size : 'N/A';
+        astarSuccess.textContent = "Failed";
+    }
+
+    // --- BFS Results ---
+    const bfsQuality = document.getElementById('bfs-quality');
+    const bfsTime = document.getElementById('bfs-time');
+    const bfsMemory = document.getElementById('bfs-memory');
+    const bfsSuccess = document.getElementById('bfs-success');
+
+    if (results.bfs && results.bfs.totalDistance !== Infinity) {
+        bfsQuality.textContent = results.bfs.totalDistance.toFixed(0);
+        bfsTime.textContent = results.bfs.time.toFixed(2);
+        bfsMemory.textContent = results.bfs.allVisitedNodes.size;
+        bfsSuccess.textContent = "Found Path";
+    } else {
+        bfsQuality.textContent = "Failed";
+        bfsTime.textContent = results.bfs?.time ? results.bfs.time.toFixed(2) : 'N/A';
+        bfsMemory.textContent = results.bfs?.allVisitedNodes ? results.bfs.allVisitedNodes.size : 'N/A';
+        bfsSuccess.textContent = "Failed";
+    }
+
+    // --- GA Results ---
+    const gaQuality = document.getElementById('ga-quality');
+    const gaTime = document.getElementById('ga-time');
+    const gaMemory = document.getElementById('ga-memory');
+    const gaSuccess = document.getElementById('ga-success');
+
+    if (results.ga && results.ga.totalDistance !== Infinity) {
+        gaQuality.textContent = results.ga.totalDistance.toFixed(0);
+        gaTime.textContent = results.ga.time.toFixed(2);
+        gaMemory.textContent = results.ga.allVisitedNodes.size;
+        gaSuccess.textContent = "Found Path";
+    } else {
+        gaQuality.textContent = "Failed";
+        gaTime.textContent = results.ga?.time ? results.ga.time.toFixed(2) : 'N/A';
+        gaMemory.textContent = results.ga?.allVisitedNodes ? results.ga.allVisitedNodes.size : 'N/A';
+        gaSuccess.textContent = "Failed";
+    }
+    
+    modal.style.display = 'flex';
+}
+// --- End Comparison Popup Function ---
+
 
 /**
  * Handles window resize.
@@ -597,11 +719,20 @@ function onWindowResize() {
         rendererBfs.setSize(widthBfs, heightBfs);
         labelRendererBfs.setSize(widthBfs, heightBfs);
     }
+    
+    const containerGa = document.getElementById('canvas-container-ga');
+    const widthGa = containerGa.clientWidth;
+    const heightGa = containerGa.clientHeight;
+    if (widthGa > 0 && heightGa > 0) {
+        cameraGa.aspect = widthGa / heightGa;
+        cameraGa.updateProjectionMatrix();
+        rendererGa.setSize(widthGa, heightGa);
+        labelRendererGa.setSize(widthGa, heightGa);
+    }
 }
 
 // --- 3D MAP GENERATION ---
 
-// --- MODIFIED: Redraw both maps ---
 function redraw3DMap() {
     while (mapGroupAstar.children.length > 0) {
         mapGroupAstar.remove(mapGroupAstar.children[0]);
@@ -609,12 +740,15 @@ function redraw3DMap() {
     while (mapGroupBfs.children.length > 0) {
         mapGroupBfs.remove(mapGroupBfs.children[0]);
     }
+    while (mapGroupGa.children.length > 0) {
+        mapGroupGa.remove(mapGroupGa.children[0]);
+    }
     generate3DMap(mapGroupAstar);
     generate3DMap(mapGroupBfs);
-    drawAllMarkers(); // MODIFIED
+    generate3DMap(mapGroupGa);
+    drawAllMarkers(); 
 }
 
-// --- MODIFIED: Accepts a mapGroup ---
 function generate3DMap(mapGroup) {
     const offset_c = (GRID_COLS * CELL_SIZE) / 2 - CELL_SIZE / 2;
     const offset_r = (GRID_ROWS * CELL_SIZE) / 2 - CELL_SIZE / 2;
@@ -665,10 +799,8 @@ function updateAllMarkers() {
             }
         }
     }
-    drawAllMarkers(); // MODIFIED
+    drawAllMarkers();
 }
-
-// --- NEW: Helper functions for clearing/drawing in a specific scene ---
 
 function clearMarkersForScene(startMarker, stopMarkers, stopLabels, mapGroup) {
     if (startMarker) {
@@ -693,6 +825,11 @@ function clearAllMarkers() {
      startMarkerBfs = markers.startMarker;
      stopMarkersBfs = markers.stopMarkers;
      stopLabelsBfs = markers.stopLabels;
+     
+     markers = clearMarkersForScene(startMarkerGa, stopMarkersGa, stopLabelsGa, mapGroupGa);
+     startMarkerGa = markers.startMarker;
+     stopMarkersGa = markers.stopMarkers;
+     stopLabelsGa = markers.stopLabels;
 }
 
 function drawMarkersForScene(mapGroup) {
@@ -705,7 +842,7 @@ function drawMarkersForScene(mapGroup) {
         startMarker.position.set(pos.x, pos.y, pos.z);
         mapGroup.add(startMarker);
     }
-    stopCoords.forEach((stop, index) => {
+    stopCoords.forEach((stop) => {
         const marker = new THREE.Mesh(markerGeometry, stopMaterial);
         const pos = get3DPos(stop.r, stop.c, PATH_HEIGHT + 0.1);
         marker.position.set(pos.x, pos.y, pos.z);
@@ -724,6 +861,10 @@ function drawAllMarkers() {
     markers = drawMarkersForScene(mapGroupBfs);
     startMarkerBfs = markers.startMarker;
     stopMarkersBfs = markers.stopMarkers;
+    
+    markers = drawMarkersForScene(mapGroupGa);
+    startMarkerGa = markers.startMarker;
+    stopMarkersGa = markers.stopMarkers;
 }
 
 function clearPathForScene(pathMeshes, visitedMeshes, stopMarkers, stopLabels, mapGroup) {
@@ -750,11 +891,14 @@ function clearAllPaths() {
     pathMeshesBfs = cleared.pathMeshes;
     visitedMeshesBfs = cleared.visitedMeshes;
     stopLabelsBfs = cleared.stopLabels;
+    
+    cleared = clearPathForScene(pathMeshesGa, visitedMeshesGa, stopMarkersGa, stopLabelsGa, mapGroupGa);
+    pathMeshesGa = cleared.pathMeshes;
+    visitedMeshesGa = cleared.visitedMeshes;
+    stopLabelsGa = cleared.stopLabels;
 }
 
-// MODIFIED: Accepts pathMeshes array
 function drawPath(fullPath, pathMeshes) {
-    // Clear old meshes
     pathMeshes.splice(0, pathMeshes.length);
     
     const color = animatedPathMaterial; 
@@ -771,7 +915,6 @@ function drawPath(fullPath, pathMeshes) {
     }
 }
 
-// NEW: Helper to add labels
 function addLabels(stopOrder, stopMarkers, stopLabels) {
     for (let i = 1; i < stopOrder.length; i++) {
         const stop = stopOrder[i];
@@ -780,7 +923,7 @@ function addLabels(stopOrder, stopMarkers, stopLabels) {
         
         if (originalIndex > -1 && stopMarkers[originalIndex]) {
             const markerMesh = stopMarkers[originalIndex];
-            markerMesh.material = stopCompleteMaterial; // Set as complete
+            markerMesh.material = stopCompleteMaterial;
 
             const labelDiv = document.createElement('div');
             labelDiv.className = 'stop-label';
@@ -799,10 +942,8 @@ function showMessage(msg) {
 
 /**
  * Animates the appearance of the "visited" nodes.
- * MODIFIED: Accepts mapGroup and visitedMeshes array
  */
-function animateVisitedNodes(nodesSet, mapGroup, visitedMeshes, callback) {
-    // Clear old meshes
+function animateVisitedNodes(nodesSet, mapGroup, visitedMeshes, material, callback) {
     visitedMeshes.splice(0, visitedMeshes.length);
 
     let nodesArray = Array.from(nodesSet).map(key => {
@@ -811,9 +952,8 @@ function animateVisitedNodes(nodesSet, mapGroup, visitedMeshes, callback) {
     });
 
     let index = 0;
-    // --- FIX 2: Slow down animation ---
-    const batchSize = 2; // How many nodes to draw at once
-    const delay = 30;     // Millisecond delay between batches (WAS 20)
+    const batchSize = 2; 
+    const delay = 30;     
 
     function animateBatch() { 
         for (let i = 0; i < batchSize && index < nodesArray.length; i++, index++) { 
@@ -822,7 +962,7 @@ function animateVisitedNodes(nodesSet, mapGroup, visitedMeshes, callback) {
             if (startCoords && node.r === startCoords.r && node.c === startCoords.c) continue;
             if (stopCoords.some(s => s.r === node.r && s.c === node.c)) continue;
 
-            const mesh = new THREE.Mesh(visitedNodeGeometry, visitedMaterial);
+            const mesh = new THREE.Mesh(visitedNodeGeometry, material);
             const pos = get3DPos(node.r, node.c, PATH_HEIGHT + 0.01); 
             mesh.position.set(pos.x, pos.y, pos.z);
             mapGroup.add(mesh);
@@ -830,29 +970,23 @@ function animateVisitedNodes(nodesSet, mapGroup, visitedMeshes, callback) {
         }
 
         if (index < nodesArray.length) {
-            // Use setTimeout for a controllable delay
             setTimeout(animateBatch, delay);
         } else {
             if (callback) callback();
         }
     }
     
-    // Start the animation
     setTimeout(animateBatch, delay);
 }
 
-// --- NEW: Path Drawing Animation ---
-let pathAnimationIndexAstar = 0;
-let pathAnimationIndexBfs = 0;
-    
-// MODIFIED: Accepts mapGroup, pathMeshes array, and callback
+/**
+ * Path Drawing Animation.
+ */
 function animatePath(mapGroup, pathMeshes, callback) {
     let index = 0;
-    // --- FIX 2: Slow down animation ---
-    const delay = 75; // Millisecond delay between path segments (WAS 50)
+    const delay = 75; 
 
     function animatePathBatch() {
-        // Batch size is 1
         if (index < pathMeshes.length) {
             const mesh = pathMeshes[index];
             mapGroup.add(mesh);
@@ -860,17 +994,14 @@ function animatePath(mapGroup, pathMeshes, callback) {
         }
 
         if (index < pathMeshes.length) {
-            // Use setTimeout for a controllable delay
             setTimeout(animatePathBatch, delay);
         } else {
             if (callback) callback();
         }
     }
     
-    // Start the animation
     setTimeout(animatePathBatch, delay);
 }
-// --- End Path Drawing Animation ---
 
 // --- ANIMATION FUNCTIONS ---
 
@@ -884,7 +1015,7 @@ function setUIEnabled(enabled) {
     }
 }
 
-// --- NEW: TUTORIAL FUNCTIONS (Heavily Modified) ---
+// --- TUTORIAL FUNCTIONS ---
 
 function startTutorial() {
     clearAllMarkers();
@@ -928,7 +1059,6 @@ function endTutorial() {
 }
 
 function nextTutorialStep() {
-    // Update the step counter based on the modified tutorialSteps array
     const totalSteps = tutorialSteps.length;
     if (currentTutorialStep < totalSteps - 1) {
         currentTutorialStep++;
@@ -973,7 +1103,6 @@ async function showTutorialStep(index) {
 
     tutorialTitle.textContent = step.title;
     tutorialText.textContent = step.text;
-    // Update counter to reflect new total
     tutorialCounter.textContent = `${index + 1} / ${tutorialSteps.length}`;
     
     tutorialPrev.disabled = true;
@@ -1022,10 +1151,6 @@ async function showTutorialStep(index) {
                     tutorialClickListener = { element: targetElement, handler: handler };
                 }
             } else if (step.waitFor.type === 'custom') {
-<<<<<<< HEAD
-=======
-                // --- MODIFIED: More descriptive text ---
->>>>>>> ab392d4471940dc1fbb1f5ec7cb65140d1bfa640
                 if (step.waitFor.event === 'build') {
                     tutorialText.textContent = `Now you try it! Click or drag on any empty (dark grey) squares to build obstacles.`;
                 } else if (step.waitFor.event === 'erase') {
@@ -1035,16 +1160,9 @@ async function showTutorialStep(index) {
                 } else {
                     tutorialText.textContent = `Now you try it on the grid. We'll wait...`;
                 }
-<<<<<<< HEAD
                 
                 currentTutorialWait = step.waitFor; 
                 editorContainer.classList.remove('disabled'); 
-=======
-                // --- END MODIFIED ---
-                
-                currentTutorialWait = step.waitFor; // Now we wait for the user
-                editorContainer.classList.remove('disabled'); // Enable grid for user
->>>>>>> ab392d4471940dc1fbb1f5ec7cb65140d1bfa640
             }
         } else {
             tutorialText.textContent = `Now you try it. Add as many stops as you like, then click "Next".`;
@@ -1081,7 +1199,7 @@ async function showTutorialStep(index) {
     }
 }
 
-// --- NEW: Tutorial Demo Functions ---
+// --- Tutorial Demo Functions ---
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -1172,12 +1290,12 @@ async function runTutorialDemo(demoType) {
             handlePathfindingClick(midR, midC); 
             break;
 
-        case 'click-set-stop':
+        case 'click-set-checkpoint':
             await demoClick(document.getElementById('btn-stop'));
             break;
 
-        case 'place-stops':
-            setMode('SET_STOP'); 
+        case 'place-checkpoints':
+            setMode('SET_CHECKPOINT'); 
             await demoClick(editorCells[midR - 3][midC]);
             handlePathfindingClick(midR - 3, midC); 
             await demoClick(editorCells[midR + 3][midC]);
@@ -1194,15 +1312,11 @@ async function runTutorialDemo(demoType) {
     demoCursor.style.display = 'none';
 }
 
-// --- END: Tutorial Demo Functions ---
-
-
 // --- ANIMATION LOOP ---
 
 function animate() {
     requestAnimationFrame(animate);
     
-    // --- NEW: Update and render both scenes ---
     if (controlsAstar) controlsAstar.update();
     if (rendererAstar) rendererAstar.render(sceneAstar, cameraAstar);
     if (labelRendererAstar) labelRendererAstar.render(sceneAstar, cameraAstar);
@@ -1210,6 +1324,10 @@ function animate() {
     if (controlsBfs) controlsBfs.update();
     if (rendererBfs) rendererBfs.render(sceneBfs, cameraBfs);
     if (labelRendererBfs) labelRendererBfs.render(sceneBfs, cameraBfs);
+    
+    if (controlsGa) controlsGa.update();
+    if (rendererGa) rendererGa.render(sceneGa, cameraGa);
+    if (labelRendererGa) labelRendererGa.render(sceneGa, cameraGa);
 }
 
 // --- START ---
@@ -1219,6 +1337,7 @@ const startBtn = document.getElementById('start-btn');
 const rowsInput = document.getElementById('input-rows');
 const colsInput = document.getElementById('input-cols');
 
+// Listener for custom grid
 startBtn.addEventListener('click', () => {
     let rows = parseInt(rowsInput.value);
     let cols = parseInt(colsInput.value);
@@ -1226,13 +1345,13 @@ startBtn.addEventListener('click', () => {
     cols = Math.min(Math.max(cols, 5), 50);
 
     modal.style.display = 'none';
-    init(rows, cols);
+    // Initializes a clean grid since loadedGrid is null/undefined
+    init(rows, cols); 
 
     if (localStorage.getItem('hasVisitedMapEditor') === 'true') {
         setTimeout(startTutorial, 500); 
     }
 });
-<<<<<<< HEAD
 
 // --- Initial check in case modal is skipped by localstorage ---
 if (document.getElementById('startup-modal').style.display === 'none') {
@@ -1240,7 +1359,6 @@ if (document.getElementById('startup-modal').style.display === 'none') {
     let cols = parseInt(colsInput.value);
     rows = Math.min(Math.max(rows, 5), 50);
     cols = Math.min(Math.max(cols, 5), 50);
+    // Initializes a clean grid since loadedGrid is null/undefined
     init(rows, cols);
 }
-=======
->>>>>>> ab392d4471940dc1fbb1f5ec7cb65140d1bfa640
