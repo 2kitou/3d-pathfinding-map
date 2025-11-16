@@ -342,8 +342,9 @@ function initThreeJS() {
     const fov = 40; 
     const distance = (maxDim / 2) / Math.tan(THREE.MathUtils.degToRad(fov / 2));
     
-    const camZ = Math.max(distance * 1.8, 15); 
-    const camY = Math.max(distance * 2.1, 19); 
+    // ADJUSTED MULTIPLIERS FOR ZOOM OUT (Keeping 80 degree tilt)
+    const camZ = Math.max(distance * 0.3, 10); 
+    const camY = Math.max(distance * 1.3, 30); 
 
     cameraAstar.position.set(0, camY, camZ);
     cameraBfs.position.set(0, camY, camZ);
@@ -1145,7 +1146,7 @@ async function showTutorialStep(index) {
                         if (targetElement.id === 'find-path-btn') {
                             onFindPathClick(); 
                         }
-                        nextTutorialStep();
+                            nextTutorialStep();
                     };
                     targetElement.addEventListener('click', handler, { once: true });
                     tutorialClickListener = { element: targetElement, handler: handler };
