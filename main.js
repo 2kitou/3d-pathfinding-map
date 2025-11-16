@@ -1,9 +1,11 @@
+// --- Import Pathfinding Logic ---
+import { findMultiStopPath } from './pathfinder_astar.js';
+import { findMultiStopPathBFS } from './pathfinder_bfs.js';
+
+// --- Import Three.js ---
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-
-// Import pathfinding logic
-import { findMultiStopPath } from './pathfinder_astar.js';
 
 // --- GLOBAL SETTINGS ---
 let GRID_ROWS;
@@ -18,7 +20,7 @@ const pathGeometry = new THREE.BoxGeometry(CELL_SIZE, PATH_HEIGHT, CELL_SIZE);
 const buildingGeometry = new THREE.BoxGeometry(CELL_SIZE, BUILDING_HEIGHT, CELL_SIZE);
 const markerGeometry = new THREE.BoxGeometry(CELL_SIZE, PATH_HEIGHT * 2, CELL_SIZE);
 const pathNodeGeometry = new THREE.BoxGeometry(CELL_SIZE * 0.5, PATH_HEIGHT * 1.5, CELL_SIZE * 0.5);
-const agentGeometry = new THREE.SphereGeometry(CELL_SIZE * 0.3, 16, 16); // Agent geometry
+const visitedNodeGeometry = new THREE.BoxGeometry(CELL_SIZE * 0.8, PATH_HEIGHT, CELL_SIZE * 0.8);
 
 // Materials (re-used for efficiency)
 const pathMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 1.0, metalness: 0.0 });
@@ -26,17 +28,24 @@ const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, rough
 const startMaterial = new THREE.MeshStandardMaterial({ color: 0x4CAF50, emissive: 0x4CAF50, emissiveIntensity: 0.5 });
 const stopMaterial = new THREE.MeshStandardMaterial({ color: 0xF44336, emissive: 0xF44336, emissiveIntensity: 0.5 });
 const stopCompleteMaterial = new THREE.MeshStandardMaterial({ color: 0x00E676, emissive: 0x00E676, emissiveIntensity: 0.8 }); // Bright green
-const agentMaterial = new THREE.MeshStandardMaterial({ color: 0x00BFFF, emissive: 0x00BFFF, emissiveIntensity: 1.0 }); // Agent material
+const visitedMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x007bff, 
+    emissive: 0x007bff, 
+    emissiveIntensity: 0.4, 
+    opacity: 0.6, 
+    transparent: true 
+});
 
-const segmentMaterials = [
-    new THREE.MeshStandardMaterial({ color: 0x00BCD4, emissive: 0x00BCD4, emissiveIntensity: 0.7 }), // Cyan
-    new THREE.MeshStandardMaterial({ color: 0xFF9800, emissive: 0xFF9800, emissiveIntensity: 0.7 }), // Orange
-    new THREE.MeshStandardMaterial({ color: 0x9C27B0, emissive: 0x9C27B0, emissiveIntensity: 0.7 }), // Purple
-    new THREE.MeshStandardMaterial({ color: 0xFFEB3B, emissive: 0xFFEB3B, emissiveIntensity: 0.7 })  // Yellow
-];
+const animatedPathMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x00BCD4, 
+    emissive: 0x00BCD4, 
+    emissiveIntensity: 0.7 
+});
 
-let scene, camera, renderer, controls, mapGroup;
-let labelRenderer;
+// --- NEW: Two sets of Three.js variables ---
+let sceneAstar, cameraAstar, rendererAstar, controlsAstar, mapGroupAstar, labelRendererAstar;
+let sceneBfs, cameraBfs, rendererBfs, controlsBfs, mapGroupBfs, labelRendererBfs;
+
 let gridData = [];
 let editorCells = [];
 
@@ -44,31 +53,24 @@ let editorCells = [];
 let currentMode = "BUILD";
 let startCoords = null;
 let stopCoords = [];
-let startMarker = null;
-let stopMarkers = [];
-let stopLabels = [];
-let pathMeshes = [];
+
+// --- NEW: Scene-specific state ---
+let startMarkerAstar = null, startMarkerBfs = null;
+let stopMarkersAstar = [], stopMarkersBfs = [];
+let stopLabelsAstar = [], stopLabelsBfs = [];
+let pathMeshesAstar = [], pathMeshesBfs = [];
+let visitedMeshesAstar = [], visitedMeshesBfs = [];
+
 let isDrawing = false;
 let drawingValue = 0;
 
-// --- Animation State ---
-let agent = null; // The 3D mesh for the agent
-let isAnimating = false;
-let animationPath = []; // Array of THREE.Vector3 positions
-let animationFullPath = []; // Array of {r, c} coords for logic
-let animationStopOrder = []; // Array of {r, c} coords for logic
-let currentPathIndex = 0;
-let animationProgress = 0;
-const AGENT_SPEED = 2.0; // Units (cells) per second
-
 // DOM Elements
-const canvas = document.getElementById('three-canvas');
 const editorContainer = document.getElementById('grid-editor-container');
 const modeButtons = document.querySelectorAll('.mode-btn');
 const findPathButton = document.getElementById('find-path-btn');
 const messageBox = document.getElementById('message-box');
 const helpButton = document.getElementById('help-btn');
-const demoCursor = document.getElementById('demo-cursor'); // NEW: Demo cursor
+const demoCursor = document.getElementById('demo-cursor'); 
 
 // --- Tutorial Elements ---
 const tutorialOverlay = document.getElementById('tutorial-overlay');
@@ -112,9 +114,7 @@ const tutorialSteps = [
     {
         element: '#btn-start',
         title: '2. Set Start',
-        // MODIFIED: Removed demo and updated text
         text: 'Click the "Set Start" button to enter start placement mode.', 
-        // REMOVED: demo: 'click-set-start', 
         waitFor: { type: 'click', element: '#btn-start' }
     },
     {
@@ -127,9 +127,7 @@ const tutorialSteps = [
     {
         element: '#btn-stop',
         title: '3. Add Stops',
-        // MODIFIED: Removed demo and updated text
         text: 'Click the "Add/Remove Stop" button to enter stop placement mode.', 
-        // REMOVED: demo: 'click-set-stop', 
         waitFor: { type: 'click', element: '#btn-stop' }
     },
     {
@@ -142,14 +140,13 @@ const tutorialSteps = [
     {
         element: '#find-path-btn',
         title: '4. Find Route!',
-        text: 'Watch how to calculate the final route.', // New text
-        demo: 'click-find-path', // New property
+        text: 'Great! Now, click the "Find Route" button to see both algorithms run.', 
         waitFor: { type: 'click', element: '#find-path-btn' }
     },
     {
-        element: '.canvas-container',
+        element: '.visualization-container',
         title: 'All Done!',
-        text: 'Watch the animation! You can orbit the 3D map by clicking and dragging. Click "End" to finish the tutorial.',
+        text: 'Watch the animations! You can orbit the 3D maps by clicking and dragging. Click "End" to finish the tutorial.',
         waitFor: null
     }
 ];
@@ -163,8 +160,12 @@ function init(rows, cols) {
 
     createGridData();
     createEditorUI();
+    
+    // --- NEW: Init both scenes ---
     initThreeJS();
-    generate3DMap();
+    
+    generate3DMap(mapGroupAstar);
+    generate3DMap(mapGroupBfs);
     
     modeButtons.forEach(btn => {
         btn.addEventListener('click', () => setMode(btn.dataset.mode));
@@ -194,10 +195,7 @@ function init(rows, cols) {
     // --- Check for first visit ---
     if (!localStorage.getItem('hasVisitedMapEditor')) {
         localStorage.setItem('hasVisitedMapEditor', 'true');
-        // --- NEW: Wait for modal to close before starting tutorial ---
-        // (This is now handled in the 'START' section at the bottom)
     } else {
-        // Remove modal immediately if not first visit
         document.getElementById('startup-modal').style.display = 'none';
     }
 }
@@ -207,7 +205,6 @@ function createGridData() {
     for (let r = 0; r < GRID_ROWS; r++) {
         const row = [];
         for (let c = 0; c < GRID_COLS; c++) {
-            // Start with an empty map (all 0s)
             row.push(0);
         }
         gridData.push(row);
@@ -234,32 +231,32 @@ function createEditorUI() {
     }
 }
 
-function initThreeJS() {
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x222222); 
-    
-    mapGroup = new THREE.Group();
+// --- NEW: Generic scene creator ---
+function createScene(canvas, labelContainer) {
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x222222);
+
+    const mapGroup = new THREE.Group();
     scene.add(mapGroup);
 
     const aspect = canvas.clientWidth / canvas.clientHeight;
-    camera = new THREE.PerspectiveCamera(40, aspect, 0.1, 1000); 
-    camera.position.set(0, 25, 25); 
-    
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+    const camera = new THREE.PerspectiveCamera(40, aspect, 0.1, 1000);
+    camera.position.set(0, 25, 25);
+
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    const labelContainer = document.getElementById('label-container');
-    labelRenderer = new CSS2DRenderer({ element: labelContainer });
+    const labelRenderer = new CSS2DRenderer({ element: labelContainer });
     labelRenderer.domElement.style.position = 'absolute';
     labelRenderer.domElement.style.top = '0px';
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8); 
-    directionalLight.position.set(30, 40, 20); 
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    directionalLight.position.set(30, 40, 20);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 1024;
     directionalLight.shadow.mapSize.height = 1024;
@@ -269,11 +266,77 @@ function initThreeJS() {
     directionalLight.shadow.camera.right = 20;
     scene.add(directionalLight);
 
-    controls = new OrbitControls(camera, renderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
     controls.update();
+
+    return { scene, camera, renderer, controls, mapGroup, labelRenderer };
+}
+
+// --- NEW: Init both scenes ---
+function initThreeJS() {
+    // A* Scene
+    const canvasAstar = document.getElementById('three-canvas-astar');
+    const labelContainerAstar = document.getElementById('label-container-astar');
+    const sceneAstarData = createScene(canvasAstar, labelContainerAstar);
+    sceneAstar = sceneAstarData.scene;
+    cameraAstar = sceneAstarData.camera;
+    rendererAstar = sceneAstarData.renderer;
+    controlsAstar = sceneAstarData.controls;
+    mapGroupAstar = sceneAstarData.mapGroup;
+    labelRendererAstar = sceneAstarData.labelRenderer;
+    
+    // BFS Scene
+    const canvasBfs = document.getElementById('three-canvas-bfs');
+    const labelContainerBfs = document.getElementById('label-container-bfs');
+    const sceneBfsData = createScene(canvasBfs, labelContainerBfs);
+    sceneBfs = sceneBfsData.scene;
+    cameraBfs = sceneBfsData.camera;
+    rendererBfs = sceneBfsData.renderer;
+    controlsBfs = sceneBfsData.controls;
+    mapGroupBfs = sceneBfsData.mapGroup;
+    labelRendererBfs = sceneBfsData.labelRenderer;
+
+    // --- NEW: Auto-fit camera ---
+    // Determine the largest grid dimension
+    const maxDim = Math.max(GRID_ROWS, GRID_COLS) * CELL_SIZE;
+    // Calculate a suitable camera distance.
+    // tan(fov/2) = (grid_radius) / distance
+    // We use maxDim as the diameter.
+    const fov = 40; // From createScene
+    const distance = (maxDim / 2) / Math.tan(THREE.MathUtils.degToRad(fov / 2));
+    
+    // Add some padding (e.g., 50%) and set a minimum distance
+    // MODIFIED: Further tuning to match user's screenshot (tight zoom + steeper angle)
+    const camZ = Math.max(distance * 0.2, 10); // Z position (pull back) - Was 0.9
+    const camY = Math.max(distance * 2.0, 25); // Y position (height) - Was 1.3
+
+    cameraAstar.position.set(0, camY, camZ);
+    cameraBfs.position.set(0, camY, camZ);
+    // --- End auto-fit camera ---
+
+    // --- NEW: Sync Controls ---
+    let isSyncing = false;
+    controlsAstar.addEventListener('change', () => {
+        if (isSyncing) return;
+        isSyncing = true;
+        cameraBfs.position.copy(cameraAstar.position);
+        cameraBfs.quaternion.copy(cameraAstar.quaternion);
+        controlsBfs.target.copy(controlsAstar.target);
+        isSyncing = false;
+    });
+
+    controlsBfs.addEventListener('change', () => {
+        if (isSyncing) return;
+        isSyncing = true;
+        cameraAstar.position.copy(cameraBfs.position);
+        cameraAstar.quaternion.copy(cameraBfs.quaternion);
+        controlsAstar.target.copy(controlsBfs.target);
+        isSyncing = false;
+    });
+    // --- End Sync Controls ---
 
     window.addEventListener('resize', onWindowResize);
     onWindowResize(); 
@@ -283,51 +346,40 @@ function initThreeJS() {
 
 function onGridMouseDown(event) {
     if (isTutorialActive) {
-        // --- NEW LOGIC ---
+        // ... (tutorial logic unchanged)
         const step = tutorialSteps[currentTutorialStep];
-
-        // 1. If step is waiting for a custom grid event
         if (currentTutorialWait && currentTutorialWait.type === 'custom') {
             const cell = event.target.closest('.grid-cell');
             if (!cell) return;
-            
             const r = parseInt(cell.dataset.r);
             const c = parseInt(cell.dataset.c);
-
             if (currentMode === "BUILD") {
                 if (currentTutorialWait.event !== 'build' && currentTutorialWait.event !== 'erase') return;
                 isDrawing = true;
                 drawingValue = gridData[r][c] === 1 ? 0 : 1;
                 applyDrawing(r, c);
             } 
-            else { // Assumes SET_START or SET_STOP
+            else { 
                 handlePathfindingClick(r, c);
-                
                 if (currentTutorialWait.event === 'set_start' && startCoords) {
                     nextTutorialStep();
                 }
             }
-            return; // Prevent normal logic
+            return; 
         }
-        
-        // 2. If step is "Place Stops" (index 6) which has no 'waitFor' but needs grid interaction
         if (step.demo === 'place-stops' && currentMode === 'SET_STOP') {
             const cell = event.target.closest('.grid-cell');
             if (!cell) return;
             const r = parseInt(cell.dataset.r);
             const c = parseInt(cell.dataset.c);
-            handlePathfindingClick(r, c); // Allow placing stops
-            return; // Prevent normal logic
+            handlePathfindingClick(r, c); 
+            return; 
         }
-        
-        // 3. For any other tutorial step, block grid interaction
         return; 
-        // --- END NEW LOGIC ---
     }
 
-    // --- Normal logic (if tutorial is not active) ---
-    stopAnimation(); // Stop animation on any grid interaction
-    clearPath();
+    // --- Normal logic ---
+    clearAllPaths(); // MODIFIED
     messageBox.textContent = '';
 
     const cell = event.target.closest('.grid-cell');
@@ -343,33 +395,23 @@ function onGridMouseDown(event) {
     } 
     else {
         handlePathfindingClick(r, c);
-        
-        // --- This check is now handled in the 'isTutorialActive' block above ---
-        /* if (isTutorialActive && currentTutorialWait) {
-            if (currentTutorialWait.type === 'custom' && currentTutorialWait.event === 'set_start' && startCoords) {
-                nextTutorialStep();
-            } 
-        }
-        */
     }
 }
 
 function onGridMouseMove(event) {
     if (isTutorialActive) {
-        // If tutorial is active, ONLY allow drawing if it's waiting for build/erase
-        if (!isDrawing || currentMode !== "BUILD" || (currentTutorialWait?.event !== 'build' && currentTutorialWait?.event !== 'erase')) {
+        // ... (tutorial logic unchanged)
+         if (!isDrawing || currentMode !== "BUILD" || (currentTutorialWait?.event !== 'build' && currentTutorialWait?.event !== 'erase')) {
             return;
         }
-        // It IS waiting and drawing
         const cell = event.target.closest('.grid-cell');
         if (!cell) return;
         const r = parseInt(cell.dataset.r);
         const c = parseInt(cell.dataset.c);
         applyDrawing(r, c);
-        return; // Prevent normal logic from running
+        return; 
     }
 
-    // --- Normal logic (if tutorial is not active) ---
     if (!isDrawing || currentMode !== "BUILD") return;
     const cell = event.target.closest('.grid-cell');
     if (!cell) return;
@@ -380,24 +422,23 @@ function onGridMouseMove(event) {
 
 function onGridMouseUp(event) {
     if (isTutorialActive) {
-         // --- MODIFIED: Tutorial check for building/erasing ---
-         if (isDrawing && currentTutorialWait) { // Check if we *were* drawing
+        // ... (tutorial logic unchanged)
+         if (isDrawing && currentTutorialWait) { 
             if (currentTutorialWait.type === 'custom' && currentTutorialWait.event === 'build' && drawingValue === 1) {
-                redraw3DMap(); // Redraw *after* drag
+                redraw3DMap(); 
                 nextTutorialStep();
             } else if (currentTutorialWait.type === 'custom' && currentTutorialWait.event === 'erase' && drawingValue === 0) {
-                redraw3DMap(); // Redraw *after* drag
+                redraw3DMap(); 
                 nextTutorialStep();
             }
         }
-        // --- End Tutorial check ---
-        isDrawing = false; // Still need to stop drawing
+        isDrawing = false; 
         return;
     }
 
     if (isDrawing) {
         isDrawing = false;
-        redraw3DMap();
+        redraw3DMap(); // MODIFIED
     }
 }
 
@@ -414,12 +455,12 @@ function applyDrawing(r, c) {
 function handlePathfindingClick(r, c) {
     if (startCoords && startCoords.r === r && startCoords.c === c) {
         startCoords = null;
-        clearMarkers();
+        clearAllMarkers(); // MODIFIED
     }
     let stopIndex = stopCoords.findIndex(stop => stop.r === r && stop.c === c);
     if (stopIndex > -1) {
         stopCoords.splice(stopIndex, 1);
-        clearMarkers();
+        clearAllMarkers(); // MODIFIED
     }
 
     if (currentMode === "SET_START") {
@@ -441,11 +482,7 @@ function handlePathfindingClick(r, c) {
     updateAllMarkers();
 }
 
-/**
- * Sets the current interaction mode.
- */
 function setMode(mode) {
-    stopAnimation(); // Stop animation when changing modes
     currentMode = mode;
     modeButtons.forEach(btn => {
         btn.classList.toggle('active', btn.dataset.mode === mode);
@@ -460,73 +497,75 @@ function setMode(mode) {
  * Handles click on the "Find Path" button.
  */
 function onFindPathClick() {
-    // --- NEW: Tutorial check for finding path ---
-    // We check this *before* the pathfinding starts
     let wasTutorialWaiting = false;
+    // ... (tutorial logic unchanged)
     if (isTutorialActive && currentTutorialWait) {
         if (currentTutorialWait.type === 'custom' && currentTutorialWait.event === 'find_path') {
             wasTutorialWaiting = true;
         }
+        if (currentTutorialWait.type === 'click' && currentTutorialWait.element === '#find-path-btn') {
+            wasTutorialWaiting = true;
+        }
     }
-    // --- End Tutorial check ---
     
-    stopAnimation(); // Stop any previous animation
-    clearPath();
-    
+    // --- FIX 1: Clear all previous animations ---
+    clearAllPaths();
+    // ------------------------------------------
+
     if (!startCoords || stopCoords.length === 0) {
         showMessage("Please set a Start and at least one Stop point.");
         return;
     }
 
-    showMessage("Calculating optimal route...");
+    showMessage("Calculating routes...");
     setUIEnabled(false); // Disable UI
     
     setTimeout(() => {
-        // Use the imported function
-        const { fullPath, stopOrder, totalDistance } = findMultiStopPath(gridData, startCoords, stopCoords, GRID_ROWS, GRID_COLS);
+        // --- RUN BOTH ALGORITHMS ---
+        const resultAstar = findMultiStopPath(gridData, startCoords, stopCoords, GRID_ROWS, GRID_COLS);
+        const resultBfs = findMultiStopPathBFS(gridData, startCoords, stopCoords, GRID_ROWS, GRID_COLS);
         
-        if (fullPath && fullPath.length > 0) {
-            drawPath(fullPath, stopOrder);
-            
-            for (let i = 1; i < stopOrder.length; i++) {
-                const stop = stopOrder[i];
-                const orderNumber = i;
-                const originalIndex = stopCoords.findIndex(s => s.r === stop.r && s.c === stop.c);
-                
-                if (originalIndex > -1) {
-                    const markerMesh = stopMarkers[originalIndex];
-                    const labelDiv = document.createElement('div');
-                    labelDiv.className = 'stop-label';
-                    labelDiv.textContent = `${orderNumber}`;
-                    const label = new CSS2DObject(labelDiv);
-                    label.position.set(0, 0.5, 0);
-                    markerMesh.add(label);
-                    stopLabels.push(label);
-                }
-            }
-
-            const orderText = stopOrder.map((stop, i) => {
-                if (i === 0) return 'Start';
-                // Find the *calculated* order index for the stop
-                const orderNum = stopOrder.findIndex(s => s.r === stop.r && s.c === stop.c);
-                return `Stop ${orderNum}`;
-            }).join(' -> ');
-
-            showMessage(`Route found! Order: ${orderText}. Length: ${totalDistance} steps.`);
-            
-            // --- Start animation ---
-            startAnimation(fullPath, stopOrder); // Pass stopOrder
-            // UI will be re-enabled by stopAnimation()
-            
-            // --- NEW: Advance tutorial if it was waiting ---
-            if (wasTutorialWaiting) {
-                nextTutorialStep();
-            }
-
+        // --- VISUALIZE A* ---
+        if (resultAstar.fullPath && resultAstar.fullPath.length > 0) {
+            animateVisitedNodes(resultAstar.allVisitedNodes, mapGroupAstar, visitedMeshesAstar, () => {
+                drawPath(resultAstar.fullPath, pathMeshesAstar); 
+                animatePath(mapGroupAstar, pathMeshesAstar, () => {
+                    addLabels(resultAstar.stopOrder, stopMarkersAstar, stopLabelsAstar);
+                    if (!resultBfs.fullPath) setUIEnabled(true); // Re-enable if BFS failed
+                });
+            });
         } else {
-            showMessage("No path found to one or more stops!");
-            setUIEnabled(true); // Re-enable UI on failure
+            showMessage("No path found for A*!");
+            if (!resultBfs.fullPath) setUIEnabled(true);
         }
+        
+        // --- VISUALIZE BFS ---
+        if (resultBfs.fullPath && resultBfs.fullPath.length > 0) {
+            animateVisitedNodes(resultBfs.allVisitedNodes, mapGroupBfs, visitedMeshesBfs, () => {
+                drawPath(resultBfs.fullPath, pathMeshesBfs);
+                animatePath(mapGroupBfs, pathMeshesBfs, () => {
+                    addLabels(resultBfs.stopOrder, stopMarkersBfs, stopLabelsBfs);
+                    setUIEnabled(true); // Re-enable UI
+                    if (wasTutorialWaiting) nextTutorialStep();
+                });
+            });
+        } else {
+            showMessage("No path found for BFS!");
+            setUIEnabled(true);
+            if (wasTutorialWaiting && !resultAstar.fullPath) nextTutorialStep();
+        }
+        
+        // --- Handle message box ---
+        if(resultAstar.fullPath && resultBfs.fullPath) {
+            showMessage(`A* Length: ${resultAstar.totalDistance} | BFS Length: ${resultBfs.totalDistance}`);
+        } else if (resultAstar.fullPath) {
+            showMessage(`A* Length: ${resultAstar.totalDistance} | BFS failed.`);
+        } else if (resultBfs.fullPath) {
+            showMessage(`A* failed. | BFS Length: ${resultBfs.totalDistance}`);
+        } else {
+            showMessage("Both algorithms failed to find a path!");
+        }
+        
     }, 10);
 }
 
@@ -534,27 +573,44 @@ function onFindPathClick() {
  * Handles window resize.
  */
 function onWindowResize() {
-    const container = canvas.parentElement;
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    if (width === 0 || height === 0) return;
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-    renderer.setSize(width, height);
-    labelRenderer.setSize(width, height);
+    const containerAstar = document.getElementById('canvas-container-astar');
+    const widthAstar = containerAstar.clientWidth;
+    const heightAstar = containerAstar.clientHeight;
+    if (widthAstar > 0 && heightAstar > 0) {
+        cameraAstar.aspect = widthAstar / heightAstar;
+        cameraAstar.updateProjectionMatrix();
+        rendererAstar.setSize(widthAstar, heightAstar);
+        labelRendererAstar.setSize(widthAstar, heightAstar);
+    }
+    
+    const containerBfs = document.getElementById('canvas-container-bfs');
+    const widthBfs = containerBfs.clientWidth;
+    const heightBfs = containerBfs.clientHeight;
+    if (widthBfs > 0 && heightBfs > 0) {
+        cameraBfs.aspect = widthBfs / heightBfs;
+        cameraBfs.updateProjectionMatrix();
+        rendererBfs.setSize(widthBfs, heightBfs);
+        labelRendererBfs.setSize(widthBfs, heightBfs);
+    }
 }
 
 // --- 3D MAP GENERATION ---
 
+// --- MODIFIED: Redraw both maps ---
 function redraw3DMap() {
-    while (mapGroup.children.length > 0) {
-        mapGroup.remove(mapGroup.children[0]);
+    while (mapGroupAstar.children.length > 0) {
+        mapGroupAstar.remove(mapGroupAstar.children[0]);
     }
-    generate3DMap();
-    drawMarkers();
+    while (mapGroupBfs.children.length > 0) {
+        mapGroupBfs.remove(mapGroupBfs.children[0]);
+    }
+    generate3DMap(mapGroupAstar);
+    generate3DMap(mapGroupBfs);
+    drawAllMarkers(); // MODIFIED
 }
 
-function generate3DMap() {
+// --- MODIFIED: Accepts a mapGroup ---
+function generate3DMap(mapGroup) {
     const offset_c = (GRID_COLS * CELL_SIZE) / 2 - CELL_SIZE / 2;
     const offset_r = (GRID_ROWS * CELL_SIZE) / 2 - CELL_SIZE / 2;
     
@@ -567,7 +623,6 @@ function generate3DMap() {
             const type = gridData[r][c];
 
             if (type === 1) {
-                // REVERTED: Use the global, fixed building geometry and material
                 mesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
                 mesh.position.set(x, BUILDING_HEIGHT / 2, z);
                 mesh.castShadow = true;
@@ -605,26 +660,40 @@ function updateAllMarkers() {
             }
         }
     }
-    drawMarkers();
+    drawAllMarkers(); // MODIFIED
 }
 
-function clearMarkers() {
+// --- NEW: Helper functions for clearing/drawing in a specific scene ---
+
+function clearMarkersForScene(startMarker, stopMarkers, stopLabels, mapGroup) {
     if (startMarker) {
         mapGroup.remove(startMarker);
-        startMarker = null;
     }
     stopMarkers.forEach(marker => mapGroup.remove(marker));
-    stopMarkers = [];
     stopLabels.forEach(label => {
         if(label.parent) {
             label.parent.remove(label);
         }
     });
-    stopLabels = [];
+    return { startMarker: null, stopMarkers: [], stopLabels: [] };
 }
 
-function drawMarkers() {
-    clearMarkers();
+function clearAllMarkers() {
+     let markers = clearMarkersForScene(startMarkerAstar, stopMarkersAstar, stopLabelsAstar, mapGroupAstar);
+     startMarkerAstar = markers.startMarker;
+     stopMarkersAstar = markers.stopMarkers;
+     stopLabelsAstar = markers.stopLabels;
+     
+     markers = clearMarkersForScene(startMarkerBfs, stopMarkersBfs, stopLabelsBfs, mapGroupBfs);
+     startMarkerBfs = markers.startMarker;
+     stopMarkersBfs = markers.stopMarkers;
+     stopLabelsBfs = markers.stopLabels;
+}
+
+function drawMarkersForScene(mapGroup) {
+    let startMarker = null;
+    let stopMarkers = [];
+    
     if (startCoords) {
         startMarker = new THREE.Mesh(markerGeometry, startMaterial);
         const pos = get3DPos(startCoords.r, startCoords.c, PATH_HEIGHT + 0.1);
@@ -638,49 +707,84 @@ function drawMarkers() {
         mapGroup.add(marker);
         stopMarkers.push(marker);
     });
+    return { startMarker, stopMarkers };
 }
 
-function clearPath() {
-    stopAnimation(); // Stop animation when clearing path
+function drawAllMarkers() {
+    clearAllMarkers();
+    let markers = drawMarkersForScene(mapGroupAstar);
+    startMarkerAstar = markers.startMarker;
+    stopMarkersAstar = markers.stopMarkers;
+    
+    markers = drawMarkersForScene(mapGroupBfs);
+    startMarkerBfs = markers.startMarker;
+    stopMarkersBfs = markers.stopMarkers;
+}
+
+function clearPathForScene(pathMeshes, visitedMeshes, stopMarkers, stopLabels, mapGroup) {
     pathMeshes.forEach(mesh => mapGroup.remove(mesh));
-    pathMeshes = [];
+    visitedMeshes.forEach(mesh => mapGroup.remove(mesh));
     stopLabels.forEach(label => {
         if(label.parent) {
             label.parent.remove(label);
         }
     });
-    stopLabels = [];
-
-    // Reset stop marker colors
     stopMarkers.forEach(marker => {
         marker.material = stopMaterial;
     });
+    return { pathMeshes: [], visitedMeshes: [], stopLabels: [] };
 }
 
-function drawPath(fullPath, stopOrder) {
-    clearPath();
-    let pathCurrentIndex = 0;
+function clearAllPaths() {
+    let cleared = clearPathForScene(pathMeshesAstar, visitedMeshesAstar, stopMarkersAstar, stopLabelsAstar, mapGroupAstar);
+    pathMeshesAstar = cleared.pathMeshes;
+    visitedMeshesAstar = cleared.visitedMeshes;
+    stopLabelsAstar = cleared.stopLabels;
+    
+    cleared = clearPathForScene(pathMeshesBfs, visitedMeshesBfs, stopMarkersBfs, stopLabelsBfs, mapGroupBfs);
+    pathMeshesBfs = cleared.pathMeshes;
+    visitedMeshesBfs = cleared.visitedMeshes;
+    stopLabelsBfs = cleared.stopLabels;
+}
+
+// MODIFIED: Accepts pathMeshes array
+function drawPath(fullPath, pathMeshes) {
+    // Clear old meshes
+    pathMeshes.splice(0, pathMeshes.length);
+    
+    const color = animatedPathMaterial; 
+
+    for (let i = 1; i < fullPath.length - 1; i++) { 
+        const node = fullPath[i];
+        if (stopCoords.some(s => s.r === node.r && s.c === node.c)) continue;
+
+        const mesh = new THREE.Mesh(pathNodeGeometry, color);
+        const pos = get3DPos(node.r, node.c, PATH_HEIGHT + 0.05);
+        mesh.position.set(pos.x, pos.y, pos.z);
+        
+        pathMeshes.push(mesh);
+    }
+}
+
+// NEW: Helper to add labels
+function addLabels(stopOrder, stopMarkers, stopLabels) {
     for (let i = 1; i < stopOrder.length; i++) {
-        const currentStop = stopOrder[i];
-        const color = segmentMaterials[(i-1) % segmentMaterials.length];
-        let stopIndexInPath = -1;
-        for (let j = pathCurrentIndex; j < fullPath.length; j++) {
-            if (fullPath[j].r === currentStop.r && fullPath[j].c === currentStop.c) {
-                stopIndexInPath = j;
-                break;
-            }
+        const stop = stopOrder[i];
+        const orderNumber = i;
+        const originalIndex = stopCoords.findIndex(s => s.r === stop.r && s.c === stop.c);
+        
+        if (originalIndex > -1 && stopMarkers[originalIndex]) {
+            const markerMesh = stopMarkers[originalIndex];
+            markerMesh.material = stopCompleteMaterial; // Set as complete
+
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'stop-label';
+            labelDiv.textContent = `${orderNumber}`;
+            const label = new CSS2DObject(labelDiv);
+            label.position.set(0, 0.5, 0);
+            markerMesh.add(label);
+            stopLabels.push(label);
         }
-        if (stopIndexInPath === -1) continue;
-        const segment = fullPath.slice(pathCurrentIndex, stopIndexInPath + 1);
-        for (let j = 1; j < segment.length - 1; j++) {
-            const node = segment[j];
-            const mesh = new THREE.Mesh(pathNodeGeometry, color);
-            const pos = get3DPos(node.r, node.c, PATH_HEIGHT + 0.05);
-            mesh.position.set(pos.x, pos.y, pos.z);
-            mapGroup.add(mesh);
-            pathMeshes.push(mesh);
-        }
-        pathCurrentIndex = stopIndexInPath;
     }
 }
 
@@ -688,15 +792,86 @@ function showMessage(msg) {
     messageBox.textContent = msg;
 }
 
+/**
+ * Animates the appearance of the "visited" nodes.
+ * MODIFIED: Accepts mapGroup and visitedMeshes array
+ */
+function animateVisitedNodes(nodesSet, mapGroup, visitedMeshes, callback) {
+    // Clear old meshes
+    visitedMeshes.splice(0, visitedMeshes.length);
+
+    let nodesArray = Array.from(nodesSet).map(key => {
+        const [r, c] = key.split(',').map(Number);
+        return { r, c };
+    });
+
+    let index = 0;
+    // --- FIX 2: Slow down animation ---
+    const batchSize = 2; // How many nodes to draw at once
+    const delay = 30;     // Millisecond delay between batches (WAS 20)
+
+    function animateBatch() { 
+        for (let i = 0; i < batchSize && index < nodesArray.length; i++, index++) { 
+            const node = nodesArray[index];
+
+            if (startCoords && node.r === startCoords.r && node.c === startCoords.c) continue;
+            if (stopCoords.some(s => s.r === node.r && s.c === node.c)) continue;
+
+            const mesh = new THREE.Mesh(visitedNodeGeometry, visitedMaterial);
+            const pos = get3DPos(node.r, node.c, PATH_HEIGHT + 0.01); 
+            mesh.position.set(pos.x, pos.y, pos.z);
+            mapGroup.add(mesh);
+            visitedMeshes.push(mesh);
+        }
+
+        if (index < nodesArray.length) {
+            // Use setTimeout for a controllable delay
+            setTimeout(animateBatch, delay);
+        } else {
+            if (callback) callback();
+        }
+    }
+    
+    // Start the animation
+    setTimeout(animateBatch, delay);
+}
+
+// --- NEW: Path Drawing Animation ---
+let pathAnimationIndexAstar = 0;
+let pathAnimationIndexBfs = 0;
+    
+// MODIFIED: Accepts mapGroup, pathMeshes array, and callback
+function animatePath(mapGroup, pathMeshes, callback) {
+    let index = 0;
+    // --- FIX 2: Slow down animation ---
+    const delay = 75; // Millisecond delay between path segments (WAS 50)
+
+    function animatePathBatch() {
+        // Batch size is 1
+        if (index < pathMeshes.length) {
+            const mesh = pathMeshes[index];
+            mapGroup.add(mesh);
+            index++;
+        }
+
+        if (index < pathMeshes.length) {
+            // Use setTimeout for a controllable delay
+            setTimeout(animatePathBatch, delay);
+        } else {
+            if (callback) callback();
+        }
+    }
+    
+    // Start the animation
+    setTimeout(animatePathBatch, delay);
+}
+// --- End Path Drawing Animation ---
+
 // --- ANIMATION FUNCTIONS ---
 
-/**
- * Disables/Enables UI elements during animation.
- */
 function setUIEnabled(enabled) {
     modeButtons.forEach(btn => btn.disabled = !enabled);
     findPathButton.disabled = !enabled;
-    // MODIFIED: Use classlist for disabled state
     if (enabled) {
         editorContainer.classList.remove('disabled');
     } else {
@@ -704,122 +879,23 @@ function setUIEnabled(enabled) {
     }
 }
 
-/**
- * Starts the agent animation.
- */
-function startAnimation(path, stopOrder) { // Added stopOrder
-    stopAnimation(); // Clear any existing
-    
-    // Create agent
-    agent = new THREE.Mesh(agentGeometry, agentMaterial);
-    mapGroup.add(agent);
-
-    // Store path data for logic
-    animationFullPath = path;
-    animationStopOrder = stopOrder;
-
-    // Convert grid path to 3D vector path
-    animationPath = path.map(node => {
-        const pos = get3DPos(node.r, node.c, PATH_HEIGHT + 0.25); // Slightly above path
-        return new THREE.Vector3(pos.x, pos.y, pos.z);
-    });
-    
-    if (animationPath.length > 0) {
-        agent.position.copy(animationPath[0]);
-        isAnimating = true;
-        currentPathIndex = 0;
-        animationProgress = 0;
-        setUIEnabled(false); // Disable UI
-    } else {
-        stopAnimation();
-    }
-}
-
-/**
- * Stops the agent animation and cleans up.
- */
-function stopAnimation() {
-    if (isAnimating) {
-        showMessage("Animation finished!");
-    }
-    isAnimating = false;
-    if (agent) {
-        mapGroup.remove(agent);
-        agent = null;
-    }
-    animationPath = [];
-    animationFullPath = [];
-    animationStopOrder = [];
-    currentPathIndex = 0;
-    animationProgress = 0;
-    setUIEnabled(true); // Re-enable UI
-}
-
-/**
- * Updates agent position every frame.
- */
-function updateAnimation(delta) {
-    if (!isAnimating || !agent || animationPath.length < 2) {
-        stopAnimation();
-        return;
-    }
-
-    // Move progress forward
-    animationProgress += AGENT_SPEED * delta;
-
-    // Check if we reached the next node
-    if (animationProgress >= 1.0) {
-        animationProgress = 0; // Reset progress
-        currentPathIndex++;    // Move to next segment
-        
-        // --- Check if we arrived at a stop ---
-        const arrivedNode = animationFullPath[currentPathIndex];
-        // Check if this node is a stop (and not the start point)
-        const stopIndexInOrder = animationStopOrder.findIndex(stop => stop.r === arrivedNode.r && stop.c === arrivedNode.c);
-        
-        if (stopIndexInOrder > 0) { // Found a stop (index 0 is start)
-            // Find the corresponding 3D marker in the original stopMarkers array
-            const markerIndex = stopCoords.findIndex(stop => stop.r === arrivedNode.r && stop.c === arrivedNode.c);
-            if (markerIndex > -1 && stopMarkers[markerIndex]) {
-                stopMarkers[markerIndex].material = stopCompleteMaterial;
-            }
-        }
-        // --- End of new check ---
-
-        // Check if animation is finished
-        if (currentPathIndex >= animationPath.length - 1) {
-            agent.position.copy(animationPath[animationPath.length - 1]); // Snap to end
-            stopAnimation();
-            return;
-        }
-    }
-    
-    const currentPos = animationPath[currentPathIndex];
-    const nextPos = animationPath[currentPathIndex + 1];
-    
-    // Linearly interpolate agent's position
-    agent.position.lerpVectors(currentPos, nextPos, animationProgress);
-}
-
 // --- NEW: TUTORIAL FUNCTIONS (Heavily Modified) ---
 
 function startTutorial() {
-    // Clear any old state
-    clearMarkers();
-    clearPath();
+    clearAllMarkers();
+    clearAllPaths();
     gridData.forEach(row => row.fill(0));
     redraw3DMap();
     startCoords = null;
     stopCoords = [];
     
-    setMode('BUILD'); // Set default mode
+    setMode('BUILD'); 
     
     currentTutorialStep = 0;
     isTutorialActive = true; 
     tutorialOverlay.style.display = 'block';
     tutorialStepBox.style.display = 'block';
     
-    // Disable main UI
     editorContainer.classList.add('disabled');
     
     showTutorialStep(0);
@@ -831,7 +907,6 @@ function endTutorial() {
     tutorialOverlay.style.display = 'none';
     tutorialStepBox.style.display = 'none';
     
-    // Hide demo cursor
     demoCursor.style.display = 'none';
     demoCursor.style.opacity = '0';
     
@@ -843,13 +918,14 @@ function endTutorial() {
         tutorialClickListener.element.removeEventListener('click', tutorialClickListener.handler);
         tutorialClickListener = null;
     }
-    // Re-enable main UI
     editorContainer.classList.remove('disabled');
     setUIEnabled(true);
 }
 
 function nextTutorialStep() {
-    if (currentTutorialStep < tutorialSteps.length - 1) {
+    // Update the step counter based on the modified tutorialSteps array
+    const totalSteps = tutorialSteps.length;
+    if (currentTutorialStep < totalSteps - 1) {
         currentTutorialStep++;
         showTutorialStep(currentTutorialStep);
     }
@@ -863,19 +939,17 @@ function prevTutorialStep() {
 }
 
 async function showTutorialStep(index) {
-    // Clear any previous click listener
     if (tutorialClickListener) {
         tutorialClickListener.element.removeEventListener('click', tutorialClickListener.handler);
         tutorialClickListener = null;
     }
     
-    // Remove highlight from previous
     if (highlightedElement) {
         highlightedElement.classList.remove('tutorial-highlight');
     }
     
     const step = tutorialSteps[index];
-    currentTutorialWait = null; // Clear wait by default
+    currentTutorialWait = null; 
     const element = document.querySelector(step.element);
     
     if (!element) {
@@ -883,27 +957,23 @@ async function showTutorialStep(index) {
         return;
     }
     
-    // Add highlight to current
     element.classList.add('tutorial-highlight');
     highlightedElement = element;
     
-    // Scroll element into view
     element.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
         inline: 'nearest'
     });
 
-    // Update text
     tutorialTitle.textContent = step.title;
     tutorialText.textContent = step.text;
+    // Update counter to reflect new total
     tutorialCounter.textContent = `${index + 1} / ${tutorialSteps.length}`;
     
-    // Disable all nav buttons first
     tutorialPrev.disabled = true;
     tutorialNext.disabled = true;
     
-    // Position the step box (with timeout for scroll)
     setTimeout(() => {
         const rect = element.getBoundingClientRect();
         let top = rect.top;
@@ -926,25 +996,20 @@ async function showTutorialStep(index) {
         tutorialStepBox.style.left = `${left}px`;
     }, 300);
 
-    // --- NEW: Demo Logic ---
     if (step.demo) {
-        // This step has a demo. Run it.
-        // User cannot do anything until demo is over.
         await runTutorialDemo(step.demo);
         
-        // Demo finished. Update text and set up wait.
         if (step.waitFor) {
             if (step.waitFor.type === 'click') {
                 tutorialText.textContent = `Now, you click the highlighted button.`;
                 const targetElement = document.querySelector(step.waitFor.element);
                 if (targetElement) {
                     const handler = () => {
-                        // We also need to manually call setMode if it's a mode button
                         if (targetElement.dataset.mode) {
                             setMode(targetElement.dataset.mode);
                         }
                         if (targetElement.id === 'find-path-btn') {
-                            onFindPathClick(); // Manually trigger
+                            onFindPathClick(); 
                         }
                         nextTutorialStep();
                     };
@@ -952,38 +1017,41 @@ async function showTutorialStep(index) {
                     tutorialClickListener = { element: targetElement, handler: handler };
                 }
             } else if (step.waitFor.type === 'custom') {
-                tutorialText.textContent = `Now you try it on the grid. We'll wait...`;
-                currentTutorialWait = step.waitFor; // Now we wait for the user
-                editorContainer.classList.remove('disabled'); // Enable grid for user
+                if (step.waitFor.event === 'build') {
+                    tutorialText.textContent = `Now you try it! Click or drag on any empty (dark grey) squares to build obstacles.`;
+                } else if (step.waitFor.event === 'erase') {
+                    tutorialText.textContent = `Now you try it! Click or drag on any building (white) squares to erase them.`;
+                } else if (step.waitFor.event === 'set_start') {
+                    tutorialText.textContent = `Now you try it! Click any empty (dark grey) square to place your Start point.`;
+                } else {
+                    tutorialText.textContent = `Now you try it on the grid. We'll wait...`;
+                }
+                
+                currentTutorialWait = step.waitFor; 
+                editorContainer.classList.remove('disabled'); 
             }
         } else {
-            // No 'waitFor' after demo (e.g., "Place Stops")
             tutorialText.textContent = `Now you try it. Add as many stops as you like, then click "Next".`;
-            tutorialNext.disabled = false; // Manually enable next
-            editorContainer.classList.remove('disabled'); // Enable grid for user
+            tutorialNext.disabled = false; 
+            editorContainer.classList.remove('disabled'); 
         }
         
-        // Enable 'Prev' button
         if (index > 0) tutorialPrev.disabled = false;
 
     } else {
-        // No demo for this step.
-        // Enable 'Prev' button
         if (index > 0) tutorialPrev.disabled = false;
         
-        // Check wait condition
         if (!step.waitFor) {
-            // If no wait condition, enable "Next"
             tutorialNext.disabled = false;
         } else if (step.waitFor.type === 'click') {
             const targetElement = document.querySelector(step.waitFor.element);
             if (targetElement) {
                 const handler = () => {
-                     if (targetElement.dataset.mode) {
+                    if (targetElement.dataset.mode) {
                         setMode(targetElement.dataset.mode);
                     }
                     if (targetElement.id === 'find-path-btn') {
-                        onFindPathClick(); // Manually trigger
+                        onFindPathClick(); 
                     }
                     nextTutorialStep();
                 };
@@ -991,38 +1059,33 @@ async function showTutorialStep(index) {
                 tutorialClickListener = { element: targetElement, handler: handler };
             }
         } else if (step.waitFor.type === 'custom') {
-            currentTutorialWait = step.waitFor; // Wait for user
-            editorContainer.classList.remove('disabled'); // Enable grid for user
+            currentTutorialWait = step.waitFor; 
+            editorContainer.classList.remove('disabled'); 
         }
     }
-    // --- End Demo Logic ---
 }
 
 // --- NEW: Tutorial Demo Functions ---
 
-// Helper: sleep
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Helper: Move cursor to an element
 async function moveCursorTo(element) {
     if (!element) return;
     const rect = element.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
-    demoCursor.style.transform = `translate(${x - 10}px, ${y - 3}px)`; // Offset for pointer tip
-    await sleep(500); // Time to move
+    demoCursor.style.transform = `translate(${x - 10}px, ${y - 3}px)`; 
+    await sleep(500); 
 }
 
-// Helper: Move cursor to specific grid cell
 async function moveCursorToCell(r, c) {
     if (!editorCells[r] || !editorCells[r][c]) return;
     const cell = editorCells[r][c];
     await moveCursorTo(cell);
 }
 
-// Helper: Simulate click
 async function demoClick(element, duration = 200) {
     await moveCursorTo(element);
     demoCursor.classList.add('mousedown');
@@ -1031,12 +1094,11 @@ async function demoClick(element, duration = 200) {
     await sleep(200);
 }
 
-// Helper: Simulate drag
 async function demoDrag(r1, c1, r2, c2, val) {
     await moveCursorToCell(r1, c1);
     demoCursor.classList.add('mousedown');
-    drawingValue = val; // Set drawing value for demo
-    applyDrawing(r1, c1); // Apply first click
+    drawingValue = val; 
+    applyDrawing(r1, c1); 
     await sleep(200);
     
     const rStep = (r2 > r1) ? 1 : (r2 < r1) ? -1 : 0;
@@ -1053,71 +1115,64 @@ async function demoDrag(r1, c1, r2, c2, val) {
         c = Math.max(0, Math.min(GRID_COLS - 1, c));
         
         await moveCursorToCell(r, c);
-        applyDrawing(r,c); // Apply drawing during drag
-        await sleep(100); // Drag speed
+        applyDrawing(r,c); 
+        await sleep(100); 
     }
     
     demoCursor.classList.remove('mousedown');
-    redraw3DMap(); // Redraw map at the end
+    redraw3DMap(); 
     await sleep(200);
 }
 
-// Main demo animation function
 async function runTutorialDemo(demoType) {
     demoCursor.style.display = 'block';
     await sleep(100);
     demoCursor.style.opacity = '1';
     
-    // Center the cursor
     demoCursor.style.transform = `translate(${window.innerWidth / 2}px, ${window.innerHeight / 2}px)`;
     await sleep(500);
 
-    // Find good example cells (not on edge)
     const midR = Math.floor(GRID_ROWS / 2);
     const midC = Math.floor(GRID_COLS / 2);
 
     switch (demoType) {
         case 'build':
-            setMode('BUILD'); // Ensure correct mode
-            await demoDrag(midR - 2, midC - 2, midR - 2, midC + 2, 1); // 1 = build
+            setMode('BUILD'); 
+            await demoDrag(midR - 2, midC - 2, midR - 2, midC + 2, 1); 
             break;
         
         case 'erase':
-            setMode('BUILD'); // Ensure correct mode
-            await demoDrag(midR - 2, midC - 2, midR - 2, midC + 2, 0); // 0 = erase
+            setMode('BUILD'); 
+            await demoDrag(midR - 2, midC - 2, midR - 2, midC + 2, 0); 
             break;
         
         case 'click-set-start':
             await demoClick(document.getElementById('btn-start'));
-            // setMode('SET_START'); // Don't set mode, wait for user
             break;
 
         case 'place-start':
-            setMode('SET_START'); // Ensure correct mode
+            setMode('SET_START'); 
             await demoClick(editorCells[midR][midC]);
-            handlePathfindingClick(midR, midC); // Simulate click
+            handlePathfindingClick(midR, midC); 
             break;
 
         case 'click-set-stop':
             await demoClick(document.getElementById('btn-stop'));
-            // setMode('SET_STOP'); // Don't set mode, wait for user
             break;
 
         case 'place-stops':
-            setMode('SET_STOP'); // Ensure correct mode
+            setMode('SET_STOP'); 
             await demoClick(editorCells[midR - 3][midC]);
-            handlePathfindingClick(midR - 3, midC); // Simulate click
+            handlePathfindingClick(midR - 3, midC); 
             await demoClick(editorCells[midR + 3][midC]);
-            handlePathfindingClick(midR + 3, midC); // Simulate click
+            handlePathfindingClick(midR + 3, midC); 
             break;
 
         case 'click-find-path':
             await demoClick(document.getElementById('find-path-btn'));
-            // Don't actually run the pathfind, just demo the click
             break;
     }
 
-    // Hide cursor
     demoCursor.style.opacity = '0';
     await sleep(300);
     demoCursor.style.display = 'none';
@@ -1130,15 +1185,15 @@ async function runTutorialDemo(demoType) {
 
 function animate() {
     requestAnimationFrame(animate);
-    const delta = clock.getDelta(); // Get time since last frame
     
-    if (isAnimating) {
-        updateAnimation(delta); // Update animation
-    }
+    // --- NEW: Update and render both scenes ---
+    if (controlsAstar) controlsAstar.update();
+    if (rendererAstar) rendererAstar.render(sceneAstar, cameraAstar);
+    if (labelRendererAstar) labelRendererAstar.render(sceneAstar, cameraAstar);
     
-    controls.update();
-    renderer.render(scene, camera);
-    labelRenderer.render(scene, camera);
+    if (controlsBfs) controlsBfs.update();
+    if (rendererBfs) rendererBfs.render(sceneBfs, cameraBfs);
+    if (labelRendererBfs) labelRendererBfs.render(sceneBfs, cameraBfs);
 }
 
 // --- START ---
@@ -1154,15 +1209,19 @@ startBtn.addEventListener('click', () => {
     rows = Math.min(Math.max(rows, 5), 50);
     cols = Math.min(Math.max(cols, 5), 50);
 
-    // MODIFIED: Hide modal *before* init
     modal.style.display = 'none';
     init(rows, cols);
 
-    // --- NEW: Check if we should start tutorial ---
     if (localStorage.getItem('hasVisitedMapEditor') === 'true') {
-        // This is a bit of a workaround: 'hasVisitedMapEditor' is set in init()
-        // but the check in init() is what *prevents* the modal from showing.
-        // We know if we're *here*, the modal was shown, so it's the first visit.
-        setTimeout(startTutorial, 500); // Wait for modal to close
+        setTimeout(startTutorial, 500); 
     }
 });
+
+// --- Initial check in case modal is skipped by localstorage ---
+if (document.getElementById('startup-modal').style.display === 'none') {
+    let rows = parseInt(rowsInput.value);
+    let cols = parseInt(colsInput.value);
+    rows = Math.min(Math.max(rows, 5), 50);
+    cols = Math.min(Math.max(cols, 5), 50);
+    init(rows, cols);
+}

@@ -62,13 +62,6 @@ header h1 {
     background-color: #0056b3;
 }
 
-/* REMOVED: Spacer for centering title */
-/*
-.header-spacer {
-    width: 78px; 
-}
-*/
-
 /* NEW: Add rules for flex layout */
 .header-left, .header-right {
     flex: 1;
@@ -168,8 +161,6 @@ header h1 {
     border: 1px solid #E57373;
     transform: scale(1.1);
     box-shadow: 0 0 10px #F44336;
-    
-    /* REMOVED: Number-related styles from here */
 }
 
 .grid-cell:hover::after {
@@ -206,6 +197,8 @@ header h1 {
     flex-direction: column;
     gap: 0.75rem;
 }
+
+/* REMOVED ALGO SELECTOR */
 
 #pathfinding-controls h3 {
     margin: 0;
@@ -268,20 +261,51 @@ header h1 {
 }
 
 /* Right Panel: 3D Canvas */
-.canvas-container {
+/* MODIFIED: This is now a flex container for two scenes */
+.visualization-container {
     flex: 1; /* Takes up remaining space */
-    position: relative;
+    display: flex;
+    flex-direction: row; /* MODIFIED: Changed back to 'row' */
     background-color: #222222; /* Match body background */
 }
 
-#three-canvas {
+.canvas-container {
+    flex: 1 1 50%; /* Grow, Shrink, Basis 50% */
+    position: relative;
+    /* MODIFIED: Removed border-left */
+    overflow: hidden; /* Added to contain canvas */
+}
+
+/* NEW: Add a border-top to the bottom canvas */
+#canvas-container-bfs {
+    border-top: none; /* REMOVED: border-top */
+    border-left: 1px solid #444; /* ADDED: border-left */
+}
+
+.canvas-container h3 {
+    position: absolute;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    color: #f0f0f0;
+    background-color: rgba(0,0,0,0.5);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    z-index: 10;
+    font-weight: 600;
+}
+
+#three-canvas-astar,
+#three-canvas-bfs {
     display: block;
     width: 100%;
     height: 100%;
 }
 
 /* NEW: Container for 3D labels */
-#label-container {
+#label-container-astar,
+#label-container-bfs {
     position: absolute;
     top: 0;
     left: 0;

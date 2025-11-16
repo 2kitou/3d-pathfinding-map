@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Grid Map Editor</title>
+    <title>A* vs. BFS Side-by-Side Comparison</title>
     
-    <!-- External CSS file -->
+    <!-- Link to external CSS file -->
     <link rel="stylesheet" href="style.css">
     
     <!-- Load Inter font from Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -19,7 +19,7 @@
         <div class="header-left">
             <button id="help-btn">Help</button>
         </div>
-        <h1>Interactive Route Optimization Map</h1>
+        <h1>A* vs. BFS Comparison</h1>
         <div class="header-right"></div>
     </header>
 
@@ -34,12 +34,13 @@
             
             <div id="pathfinding-controls">
                 <h3>Multi-Stop Pathfinding</h3>
+                
                 <div class="mode-buttons">
                     <button class="mode-btn active" id="btn-build" data-mode="BUILD">Build Mode</button>
                     <button class="mode-btn" id="btn-start" data-mode="SET_START">Set Start</button>
                     <button class="mode-btn" id="btn-stop" data-mode="SET_STOP">Add/Remove Stop</button>
                 </div>
-                <button id="find-path-btn">Find Optimal Route (A*)</button>
+                <button id="find-path-btn">Find Route</button>
                 <div id="message-box"></div>
             </div>
 
@@ -53,8 +54,8 @@
                     <span>Obstacle (Building)</span>
                 </div>
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #4CAF50;"></div>
-                    <span>Start Point</span>
+                    <div class="legend-color" style="background-color: #007bff;"></div>
+                    <span>Visited Node</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #F44336;"></div>
@@ -68,17 +69,24 @@
                     <div class="legend-color" style="background-color: #00BCD4;"></div>
                     <span>Calculated Path</span>
                 </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #00BFFF;"></div>
-                    <span>Animation Sphere</span>
-                </div>
             </div>
         </div>
 
-        <!-- Right Panel: 3D Map Visualization -->
-        <div class="canvas-container">
-            <canvas id="three-canvas"></canvas>
-            <div id="label-container"></div>
+        <!-- Right Panel: Visualization Container -->
+        <div class="visualization-container">
+            
+            <div class="canvas-container" id="canvas-container-astar">
+                <h3>A* (Heuristic)</h3>
+                <canvas id="three-canvas-astar"></canvas>
+                <div id="label-container-astar"></div>
+            </div>
+            
+            <div class="canvas-container" id="canvas-container-bfs">
+                <h3>BFS (Uninformed)</h3>
+                <canvas id="three-canvas-bfs"></canvas>
+                <div id="label-container-bfs"></div>
+            </div>
+
         </div>
 
     </div>
@@ -90,11 +98,11 @@
             <div class="modal-inputs">
                 <div>
                     <label for="input-rows">Rows (5-50)</label>
-                    <input type="number" id="input-rows" value="15" min="5" max="50">
+                    <input type="number" id="input-rows" value="20" min="5" max="50">
                 </div>
                 <div>
                     <label for="input-cols">Columns (5-50)</label>
-                    <input type="number" id="input-cols" value="15" min="5" max="50">
+                    <input type="number" id="input-cols" value="20" min="5" max="50">
                 </div>
             </div>
             <button id="start-btn">Start Building</button>
@@ -117,9 +125,9 @@
         </div>
     </div>
 
-    <!-- NEW: Demo Cursor for Tutorial -->
+    <!-- Demo Cursor for Tutorial -->
     <div id="demo-cursor">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white" stroke="black" stroke-width="1.5" style="transform: rotate(20deg);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="white" stroke="black" stroke-width="1.5" style="transform: rotate(20deg);">
             <path d="M7.071 5.636a2 2 0 0 1 2.828 0l1.414 1.414a2 2 0 0 0 2.828 0l4.243-4.242a2 2 0 0 1 2.828 2.828L17 12.879a2 2 0 0 0 0 2.828l1.414 1.414a2 2 0 0 1 0 2.828l-1.414 1.414a2 2 0 0 1-2.828 0L12.879 17a2 2 0 0 0-2.828 0l-1.414 1.414a2 2 0 0 1-2.828 0L4.464 17a2 2 0 0 1 0-2.828l1.414-1.414a2 2 0 0 0 0-2.828L1.636 8.464a2 2 0 0 1 0-2.828L3 4.222a2 2 0 0 1 2.828 0L7.07 5.636z"/>
         </svg>
     </div>
@@ -135,7 +143,7 @@
         }
     </script>
 
-    <!-- External JavaScript file -->
+    <!-- Link to main JavaScript file -->
     <script type="module" src="main.js"></script>
 </body>
 </html>
